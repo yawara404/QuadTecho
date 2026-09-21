@@ -148,6 +148,18 @@
         const usersList = ref([
           { id: 1, username: 'guest', display_name: 'ゲスト', circle_name: '未所属' }
         ]);
+        // ログイン中はゲスト・旧ダミー・テスト名義を隠し、ユニークアカウントだけ表示する。
+        function isTestAccount(user) {
+          if (!user) return false;
+          if ((user.username || '').trim().toLowerCase() === 'guest') return true;
+          if (isLegacyDummyUsername(user.username)) return true;
+          const hay = `${user.username || ''} ${user.display_name || ''}`.toLowerCase();
+          return hay.includes('test') || hay.includes('テスト');
+        }
+        const modalUsers = computed(() => {
+          if (!currentUser.value || currentUser.value.username === 'guest') return usersList.value;
+          return usersList.value.filter(u => u.id === currentUser.value.id || !isTestAccount(u));
+        });
         const newUserForm = ref({ username: '', display_name: '', circle_name: '' });
         const loginUsername = ref('');
         const showProfileModal = ref(false);
@@ -2173,7 +2185,7 @@
           onDeskWheel, onGestureStart, onGestureChange, onGestureEnd,
           undo, redo, canUndo, canRedo, recordHistory, resetItemRotation,
           paperStyle, zoomLevel, fitScale, quickDropSticky, bringToFront, sendToBack, duplicateItem,
-          showUserModal, showSignupModal, showProfileModal, profileForm, currentUser, usersList, newUserForm, loginUsername, selectUser, loginByUsername, logout, openProfileModal, saveProfile, createNewUser, openSignupModal, backToLoginModal,
+          showUserModal, showSignupModal, showProfileModal, profileForm, currentUser, usersList, modalUsers, newUserForm, loginUsername, selectUser, loginByUsername, logout, openProfileModal, saveProfile, createNewUser, openSignupModal, backToLoginModal,
           pages, currentPageId, currentPage, showNewPageModal, newPageTitle,
           showRenameModal, renameTitle, switchPage, openNewPageModal, confirmCreatePage,
           openRenameModal, confirmRenamePage, deleteCurrentPage, deleteRenamingPage, saveCurrentPage,

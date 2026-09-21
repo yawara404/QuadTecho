@@ -983,7 +983,7 @@
           style="font-size: 12px; font-weight: 700; color: #4a5568; margin-bottom: 6px; display: block;">アカウントを選択してログイン:</label>
         <div
           style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; max-height: 180px; overflow-y: auto;">
-          <div v-for="u in usersList" :key="u.id"
+          <div v-for="u in modalUsers" :key="u.id"
             style="padding: 10px; border: 1px solid #ebdcd0; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
             :style="{ background: currentUser?.id === u.id ? '#eef5fb' : '#fff' }" @click="selectUser(u)">
             <div>
@@ -1173,7 +1173,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260922-profile"></script>
+  <script src="./assets/app.js?v=20260922-modal"></script>
 </body>
 
 </html>
