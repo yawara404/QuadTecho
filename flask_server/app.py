@@ -106,6 +106,31 @@ def user_login():
     conn.close()
     return jsonify({"success": True, "user": user_dict})
 
+@app.route("/api/users/<int:user_id>", methods=["PUT"])
+def update_user(user_id):
+    """プロフィール更新（ニックネーム・所属。ユーザーIDは変更不可）"""
+    data = request.get_json() or {}
+    display_name = (data.get("display_name") or "").strip()
+    circle_name = (data.get("circle_name") or "").strip() or "未所属"
+
+    if not display_name:
+        return jsonify({"success": False, "error": "ニックネームを入力してください"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    user = cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+    cursor.execute(
+        "UPDATE users SET display_name = ?, circle_name = ? WHERE id = ?",
+        (display_name, circle_name, user_id),
+    )
+    conn.commit()
+    user = cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return jsonify({"success": True, "user": dict(user)})
+
 # ==========================================================
 # 2. 手帳ページ管理 API（複数ページ・新規ページ作成）
 # ==========================================================

@@ -1009,7 +1009,30 @@
           <button class="btn" style="background: #ccc;" @click="showUserModal = false">閉じる</button>
           <button v-if="currentUser?.username !== 'guest'" class="btn" style="background: #e74c3c; color: #fff;"
             @click="logout">ログアウト</button>
+          <button v-if="currentUser?.username !== 'guest'" class="btn btn-secondary"
+            @click="openProfileModal">⚙️ プロフィール</button>
           <button class="btn btn-save" @click="openSignupModal">＋ アカウント作成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル1c: プロフィール編集 -->
+    <div v-if="showProfileModal" class="modal-backdrop" @click.self="showProfileModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">⚙️ プロフィール編集</h3>
+        <div style="font-size: 12px; color: #7f8c8d; margin-bottom: 12px;">@{{ currentUser?.username }}（ユーザーIDは変更できません）</div>
+        <div class="form-group">
+          <label>ニックネーム:</label>
+          <input v-model="profileForm.display_name" maxlength="40" placeholder="例: たろう" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label>所属・グループ:</label>
+          <input v-model="profileForm.circle_name" maxlength="40" placeholder="例: 写真サークル、2組" class="form-input" />
+        </div>
+        <button class="btn btn-save btn-full" @click="saveProfile">保存する</button>
+        <div class="modal-actions" style="justify-content: space-between; margin-top: 14px;">
+          <button class="btn" style="background: #eee;" @click="showProfileModal = false; showUserModal = true;">← アカウントに戻る</button>
+          <button class="btn" style="background: #ccc;" @click="showProfileModal = false">閉じる</button>
         </div>
       </div>
     </div>
@@ -1150,7 +1173,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260922-logout"></script>
+  <script src="./assets/app.js?v=20260922-profile"></script>
 </body>
 
 </html>

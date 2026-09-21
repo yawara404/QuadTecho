@@ -150,6 +150,8 @@
         ]);
         const newUserForm = ref({ username: '', display_name: '', circle_name: '' });
         const loginUsername = ref('');
+        const showProfileModal = ref(false);
+        const profileForm = ref({ display_name: '', circle_name: '' });
 
         // 手帳ページ管理状態
         const pages = ref([
@@ -1520,6 +1522,64 @@
           showUserModal.value = true;
         }
 
+        // ================= プロフィール編集 =================
+        function openProfileModal() {
+          profileForm.value = {
+            display_name: currentUser.value?.display_name || '',
+            circle_name: currentUser.value?.circle_name || ''
+          };
+          showUserModal.value = false;
+          showSignupModal.value = false;
+          showProfileModal.value = true;
+        }
+
+        function applyProfileLocally(displayName, circleName) {
+          const updated = {
+            ...currentUser.value,
+            display_name: displayName,
+            circle_name: circleName
+          };
+          currentUser.value = updated;
+          const idx = usersList.value.findIndex(u => u.id === updated.id);
+          if (idx >= 0) usersList.value[idx] = { ...usersList.value[idx], ...updated };
+          try {
+            localStorage.setItem('quadtecho_active_user', JSON.stringify(updated));
+            localStorage.setItem('quadtecho_users', JSON.stringify(usersList.value));
+          } catch (_) { }
+        }
+
+        async function saveProfile() {
+          const displayName = (profileForm.value.display_name || '').trim();
+          const circleName = (profileForm.value.circle_name || '').trim() || '未所属';
+          if (!displayName) {
+            triggerToast('ニックネームを入力してください', 'error');
+            return;
+          }
+          if (isFlaskOnline.value && currentUser.value?.id != null) {
+            try {
+              const res = await fetch(`${activeFlaskUrl}/api/users/${currentUser.value.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ display_name: displayName, circle_name: circleName })
+              });
+              const data = await res.json();
+              if (res.ok && data.success && data.user) {
+                currentUser.value = data.user;
+                const idx = usersList.value.findIndex(u => u.id === data.user.id);
+                if (idx >= 0) usersList.value[idx] = data.user;
+                try { localStorage.setItem('quadtecho_active_user', JSON.stringify(data.user)); } catch (_) { }
+                showProfileModal.value = false;
+                triggerToast('プロフィールを更新しました');
+                return;
+              }
+            } catch (_) { }
+          }
+          // サーバー未接続時やサーバー側に存在しないIDの場合はローカル更新
+          applyProfileLocally(displayName, circleName);
+          showProfileModal.value = false;
+          triggerToast('プロフィールを更新しました');
+        }
+
         async function createNewUser() {
           const { username, display_name, circle_name } = newUserForm.value;
           if (!username.trim()) {
@@ -2113,7 +2173,7 @@
           onDeskWheel, onGestureStart, onGestureChange, onGestureEnd,
           undo, redo, canUndo, canRedo, recordHistory, resetItemRotation,
           paperStyle, zoomLevel, fitScale, quickDropSticky, bringToFront, sendToBack, duplicateItem,
-          showUserModal, showSignupModal, currentUser, usersList, newUserForm, loginUsername, selectUser, loginByUsername, logout, createNewUser, openSignupModal, backToLoginModal,
+          showUserModal, showSignupModal, showProfileModal, profileForm, currentUser, usersList, newUserForm, loginUsername, selectUser, loginByUsername, logout, openProfileModal, saveProfile, createNewUser, openSignupModal, backToLoginModal,
           pages, currentPageId, currentPage, showNewPageModal, newPageTitle,
           showRenameModal, renameTitle, switchPage, openNewPageModal, confirmCreatePage,
           openRenameModal, confirmRenamePage, deleteCurrentPage, deleteRenamingPage, saveCurrentPage,
