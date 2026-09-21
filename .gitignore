@@ -1,0 +1,25 @@
+# Runtime data and secrets
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.venv/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+.vscode/
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+# User uploads (keep directories via .gitkeep)
+flask_server/uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
+# Detailed manual: local-only, not published on GitHub
+/WEB_SETUP.md

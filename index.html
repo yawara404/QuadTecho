@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuadTecho - 学生風手帳サイト</title>
+  <meta name="theme-color" content="#22313f" />
+  <link rel="icon" type="image/svg+xml" href="./assets/quadtecho-mark.svg" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Vue 3 (CDN: Live Serverで直接動作) -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <link rel="stylesheet" href="./assets/app.css" />
+</head>
+
+<body>
+  <div id="app">
+    <!-- ヘッダー -->
+    <header class="techo-header">
+      <a class="brand" href="#home" @click.prevent="currentTab = 'home'" aria-label="QuadTecho ホームへ">
+        <svg class="brand-icon" width="40" height="40" viewBox="0 0 64 64" fill="none"
+          xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="64" rx="16" fill="#EAF2E6" />
+          <rect x="15" y="12" width="37" height="44" rx="7" fill="#183E36" opacity=".12" />
+          <rect x="12" y="9" width="39" height="44" rx="7" fill="#245448" />
+          <path d="M21 10h23a6 6 0 0 1 6 6v30a6 6 0 0 1-6 6H21V10Z" fill="#FFFCF0" />
+          <path d="M11 20h7M11 31h7M11 42h7" stroke="#EAF2E6" stroke-width="3" stroke-linecap="round" />
+          <rect x="26" y="18" width="8" height="10" rx="2" fill="#E5B852" />
+          <rect x="37" y="18" width="8" height="10" rx="2" fill="#DF927C" />
+          <rect x="26" y="31" width="8" height="10" rx="2" fill="#8FAD99" />
+          <path d="M39 31h4a2 2 0 0 1 2 2v12l-4-3-4 3V33a2 2 0 0 1 2-2Z" fill="#7D9EBD" />
+        </svg>
+        <div class="brand-wordmark">
+          <h1 class="brand-title">Quad<span>Techo</span></h1>
+          <span class="brand-sub">毎日を、わたしの一冊に。</span>
+        </div>
+      </a>
+
+      <!-- ビュー切替タブ -->
+      <nav class="nav-tabs">
+        <button :class="['nav-tab-btn', { active: currentTab === 'home' }]" @click="currentTab = 'home'">
+          <span>🏠</span> ホーム
+        </button>
+        <button :class="['nav-tab-btn', { active: currentTab === 'list' }]" @click="currentTab = 'list'">
+          <span>🗂️</span> 手帳一覧
+        </button>
+        <button :class="['nav-tab-btn', { active: currentTab === 'canvas' }]" @click="currentTab = 'canvas'">
+          <span>📖</span> 手帳を開く
+        </button>
+        <button :class="['nav-tab-btn', { active: currentTab === 'board' }]" @click="switchToBoard">
+          <span>📌</span> 共有掲示板
+        </button>
+      </nav>
+
+      <!-- ユーザーバッジ ＆ サーバー状態 ＆ 保存ボタン -->
+      <div class="header-controls">
+        <div class="server-badge" :title="isFlaskOnline ? 'Flaskサーバーと同期中' : 'ローカル保存中'">
+          <span :class="['status-dot', isFlaskOnline ? 'online' : 'offline']"></span>
+          <span>{{ isFlaskOnline ? 'Flask同期' : 'ローカル保存' }}</span>
+        </div>
+
+        <div class="user-pill" @click="showUserModal = true">
+          <span>👤</span>
+          <span>{{ currentUser?.display_name || 'ゲスト' }}</span>
+          <span style="font-size: 10px; color: #dcdde1;">({{ currentUser?.circle_name || '学生' }})</span>
+          <span style="font-size: 9px;">▼</span>
+        </div>
+
+        <button v-if="currentTab === 'canvas'" class="btn btn-save" @click="saveCurrentPage">
+          <span>💾</span> ページ保存
+        </button>
+
+        <button class="hamburger-btn" :class="{ 'is-open': mobileMenuOpen }" @click="toggleMobileMenu"
+          :aria-label="mobileMenuOpen ? 'メニューを閉じる' : 'メニューを開く'" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </header>
+
+    <!-- モバイル用ナビゲーションドロワー -->
+    <div v-if="mobileMenuOpen" class="menu-overlay" @click="mobileMenuOpen = false"></div>
+    <aside class="mobile-drawer" :class="{ 'is-open': mobileMenuOpen }" aria-label="ナビゲーションメニュー">
+      <div class="mobile-drawer-head">
+        <span class="mobile-drawer-title">メニュー</span>
+        <button class="mobile-drawer-close" @click="mobileMenuOpen = false" aria-label="閉じる">✕</button>
+      </div>
+
+      <button :class="['mobile-nav-btn', { active: currentTab === 'home' }]" @click="openMobileTab('home')">
+        <span>🏠</span> ホーム
+      </button>
+      <button :class="['mobile-nav-btn', { active: currentTab === 'list' }]" @click="openMobileTab('list')">
+        <span>🗂️</span> 手帳一覧
+      </button>
+      <button :class="['mobile-nav-btn', { active: currentTab === 'canvas' }]" @click="openMobileTab('canvas')">
+        <span>📖</span> 手帳を開く
+      </button>
+      <button :class="['mobile-nav-btn', { active: currentTab === 'board' }]" @click="openMobileTab('__board')">
+        <span>📌</span> 共有掲示板
+      </button>
+
+      <button v-if="currentTab === 'canvas'" class="btn btn-save mobile-save-btn" @click="saveCurrentPage">
+        <span>💾</span> ページ保存
+      </button>
+    </aside>
+
+    <!-- トースト通知 -->
+    <div v-if="toast" :class="['toast-banner', toast.type]">
+      <span>{{ toast.icon }}</span>
+      <span>{{ toast.text }}</span>
+    </div>
+
+    <main class="workspace-main">
+      <!-- ==============================================
+           画面1: ホーム画面（手帳管理ダッシュボード）
+           ============================================== -->
+      <div v-show="currentTab === 'home'" class="home-dashboard">
+        <!-- ウェルカムヒーロー -->
+        <div class="home-welcome-hero">
+          <div class="hero-greeting">
+            <h2>👋 こんにちは、{{ currentUser?.display_name || '学生' }}さん！</h2>
+            <p>手帳を選んで開くか、新しいノートを作成して予定やアイデアをまとめましょう。</p>
+          </div>
+          <div class="hero-stats">
+            <div class="stat-badge">
+              <span class="stat-number">{{ pages.length }}</span>
+              <span class="stat-label">手帳ノート</span>
+            </div>
+            <div class="stat-badge">
+              <span class="stat-number">{{ totalItemCount }}</span>
+              <span class="stat-label">配置アイテム</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 手帳本棚（グリッド一覧） -->
+        <div class="section-header">
+          <h3 class="section-title">📚 あなたの手帳・ノート一覧</h3>
+          <button class="btn btn-save" @click="openNewPageModal">
+            <span>＋ 新しい手帳を作る</span>
+          </button>
+        </div>
+
+        <div class="techo-shelf-grid">
+          <!-- 手帳カード -->
+          <div v-for="page in pages" :key="page.id" class="techo-book-card" @click="openTechoFromHome(page.id)">
+            <div class="book-cover-band"></div>
+            <div class="book-card-body">
+              <span class="book-page-num">PAGE {{ page.page_number }}</span>
+              <h4 class="book-title">{{ page.title }}</h4>
+
+              <div class="book-meta">
+                <span>📓 {{ getPageItemCount(page.id) }} 個のメモ</span>
+                <div class="book-card-actions" @click.stop>
+                  <button title="名前変更" @click="openRenameModal(page)">✏️</button>
+                  <button v-if="pages.length > 1" title="削除" @click="deleteCurrentPage(page.id)">🗑️</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 新規作成カード -->
+          <div class="techo-add-card" @click="openNewPageModal">
+            <span class="add-icon-big">＋</span>
+            <span>新しい手帳・ノートを追加</span>
+          </div>
+        </div>
+
+        <!-- 下段: 最近のメモ ＆ 掲示板新着 -->
+        <div class="home-bottom-grid">
+          <div class="home-panel-box">
+            <h4 style="font-size: 15px; font-weight: 800; margin-bottom: 12px; color: #2c3e50;">📌 最近の付箋メモ</h4>
+            <div v-if="recentStickyNotes.length === 0" style="color: #a4b0be; font-size: 13px;">
+              まだ付箋メモがありません。手帳を開いてメモを貼ってみましょう！</div>
+            <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+              <div v-for="note in recentStickyNotes" :key="note.id"
+                style="padding: 10px 12px; border-radius: 6px; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); cursor: pointer;"
+                :style="{ backgroundColor: note.bg_color || '#fff9c4' }" @click="openTechoFromHome(note.page_id)">
+                <div style="font-weight: 700; color: #222; margin-bottom: 4px;">{{ note.page_title }}</div>
+                <div style="color: #333; white-space: pre-wrap;">{{ note.content }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="home-panel-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h4 style="font-size: 15px; font-weight: 800; color: #2c3e50;">📢 共有掲示板の最新トピック</h4>
+              <button class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px;" @click="switchToBoard">掲示板を見る
+                →</button>
+            </div>
+            <div v-if="boardPosts.length === 0" style="color: #a4b0be; font-size: 13px;">掲示板にまだ投稿がありません。</div>
+            <div v-else style="display: flex; flex-direction: column; gap: 8px;">
+              <div v-for="post in boardPosts.slice(0, 3)" :key="post.id"
+                style="padding: 10px; border: 1px solid #ebdcd0; border-radius: 8px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <strong style="color: #2c3e50;">{{ post.title }}</strong>
+                  <span style="color: #8395a7; font-size: 11px;">{{ post.time || '最近' }}</span>
+                </div>
+                <div style="color: #555;">{{ post.content.slice(0, 40) }}...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==============================================
+           画面1.5: メモ帳風・手帳一覧管理画面
+           ============================================== -->
+      <div v-show="currentTab === 'list'" class="techo-list-dashboard">
+        <!-- 一覧ヘッダーバナー -->
+        <div class="list-header-banner">
+          <div class="list-header-title-group">
+            <h2><span>🗂️</span> マイ手帳・ノート一覧</h2>
+            <p>手帳ページをメモ帳感覚で一覧管理。付箋やシールの内容もプレビューできます。</p>
+          </div>
+
+          <div class="user-sync-status-card">
+            <div class="user-sync-info">
+              <div class="user-sync-name">👤 {{ currentUser?.display_name || 'ゲスト' }}</div>
+              <div class="user-sync-circle">({{ currentUser?.circle_name || '学生' }}) · {{ isFlaskOnline ? 'Flaskサーバー同期中'
+                : 'ローカル保存' }}</div>
+            </div>
+            <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;"
+              @click="showUserModal = true">切替</button>
+          </div>
+        </div>
+
+        <!-- ツールバー（検索 ＆ 新規作成ボタン） -->
+        <div class="techo-list-toolbar">
+          <div class="search-box-wrap">
+            <span class="search-icon-pos">🔍</span>
+            <input v-model="techoSearchQuery" placeholder="手帳のタイトルや付箋メモの内容で検索..." class="search-input-field" />
+          </div>
+
+          <div class="toolbar-action-buttons">
+            <button class="btn btn-save" @click="openNewPageModal">
+              <span>＋ 新しい手帳を作成</span>
+            </button>
+            <button class="btn btn-secondary" @click="currentTab = 'canvas'">
+              <span>📖 手帳を開く</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- メモ帳風手帳カードグリッド -->
+        <div class="folder-list-layout">
+          <!-- 左：フォルダサイドバー -->
+          <aside class="folder-sidebar">
+            <div class="folder-sidebar-title">
+              <span>📁 フォルダ</span>
+              <button class="folder-add-btn" @click="openNewFolderModal" title="新しいフォルダを作成">＋ 追加</button>
+            </div>
+            <div :class="['folder-item', { active: activeFolderId === 'all' }]" @click="selectFolder('all')"
+              @dragover="onFolderDragOver($event, 'all')" @dragleave="dragOverFolderId = null"
+              @drop="onFolderDrop($event, 'all')">
+              <span>📚</span>
+              <span class="folder-item-name">すべて</span>
+              <span class="folder-item-count">{{ getFolderPageCount('all') }}</span>
+            </div>
+            <div :class="['folder-item', { active: activeFolderId === 'none' }]" @click="selectFolder('none')"
+              @dragover="onFolderDragOver($event, 'none')" @dragleave="dragOverFolderId = null"
+              @drop="onFolderDrop($event, 'none')">
+              <span>📄</span>
+              <span class="folder-item-name">未分類</span>
+              <span class="folder-item-count">{{ getFolderPageCount('none') }}</span>
+            </div>
+            <div v-for="folder in folders" :key="folder.id"
+              :class="['folder-item', { active: activeFolderId === folder.id, 'drag-over': dragOverFolderId === folder.id }]"
+              @click="selectFolder(folder.id)" @dragover="onFolderDragOver($event, folder.id)"
+              @dragleave="dragOverFolderId = null" @drop="onFolderDrop($event, folder.id)" @dragenter.prevent>
+              <span>📁</span>
+              <span class="folder-item-name">{{ folder.name }}</span>
+              <span class="folder-item-count">{{ getFolderPageCount(folder.id) }}</span>
+              <button class="folder-item-btn" title="名前変更" @click.stop="openRenameFolderModal(folder)">✏️</button>
+              <button class="folder-item-btn danger" title="削除（中の手帳は未分類へ）"
+                @click.stop="deleteFolder(folder)">🗑️</button>
+            </div>
+            <div v-if="folders.length === 0" style="font-size: 11px; color: #a4b0be; padding: 6px 4px;">
+              「＋ 追加」で講義別・用途別のフォルダを作れます
+            </div>
+          </aside>
+
+          <!-- 右：手帳カードグリッド -->
+          <div class="folder-grid-area">
+            <div class="memo-books-grid">
+              <!-- 各手帳カード -->
+              <div v-for="page in filteredPages" :key="page.id"
+                :class="['memo-book-card', { 'is-current-active': currentPageId === page.id }]" draggable="true"
+                @dragstart="startPageTabDrag($event, page.id)" @click="openTechoFromList(page.id)">
+                <div class="memo-card-top-bar">
+                  <span class="memo-page-badge">PAGE {{ page.page_number }}</span>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span v-if="currentPageId === page.id" class="active-editing-pill">
+                      <span>●</span> 編集中
+                    </span>
+                    <span style="color: #a4b0be; font-size: 11px;">{{ page.updated_at ? page.updated_at.slice(5, 16) :
+                      '更新済み' }}</span>
+                  </div>
+                </div>
+
+                <div class="memo-card-content">
+                  <h3 class="memo-card-title">
+                    <span>📖</span> {{ page.title }}
+                  </h3>
+
+                  <!-- 付箋メモ・シールのプレビューエリア -->
+                  <div class="memo-stickies-preview-box">
+                    <template v-if="getPagePreview(page.id).stickies.length > 0">
+                      <div v-for="st in getPagePreview(page.id).stickies.slice(0, 2)" :key="st.id"
+                        class="mini-sticky-snippet" :style="{ backgroundColor: st.bg_color || '#fff9c4' }">
+                        📌 {{ st.content || '(メモ本文なし)' }}
+                      </div>
+                      <div v-if="getPagePreview(page.id).stickies.length > 2"
+                        style="font-size: 10px; color: #8395a7; text-align: right;">
+                        他 {{ getPagePreview(page.id).stickies.length - 2 }} 件の付箋...
+                      </div>
+                    </template>
+                    <div v-else class="empty-note-hint">
+                      📝 付箋やシールはまだありません
+                    </div>
+                  </div>
+
+                  <!-- シールプレビュー行 -->
+                  <div v-if="getPagePreview(page.id).stickers.length > 0" class="memo-stickers-mini-row">
+                    <span style="font-size: 11px; color: #7f8c8d; font-weight: 700;">シール:</span>
+                    <img v-for="(stk, sidx) in getPagePreview(page.id).stickers.slice(0, 5)" :key="sidx"
+                      :src="stk.image_url" class="mini-sticker-img" :alt="stk.content" />
+                  </div>
+
+                  <div class="memo-card-footer" @click.stop>
+                    <div class="memo-card-meta">
+                      <span class="memo-meta-text">合計 {{ getPageItemCount(page.id) }} 個のアイテム</span>
+                      <span class="memo-meta-text" style="font-size: 11px; color: #8395a7;">📁 {{
+                        folderNameById(page.folder_id) }}</span>
+                      <select class="folder-move-select" :value="page.folder_id == null ? 'none' : page.folder_id"
+                        @change="movePageToFolder(page, $event.target.value === 'none' ? null : $event.target.value)"
+                        @click.stop title="所属フォルダを移動">
+                        <option value="none">📄 未分類</option>
+                        <option v-for="folder in folders" :key="folder.id" :value="folder.id">📁 {{ folder.name }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div class="memo-card-actions">
+                      <button class="btn-open-techo-primary" @click="openTechoFromList(page.id)">
+                        <span>📖 開く</span>
+                      </button>
+                      <button class="ctrl-btn" title="タイトル変更" @click="openRenameModal(page)">✏️</button>
+                      <button class="ctrl-btn" title="手帳を複製" @click="duplicatePage(page)">📋</button>
+                      <button v-if="pages.length > 1" class="ctrl-btn" style="color: #e74c3c;" title="削除"
+                        @click="deleteCurrentPage(page.id)">🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 新規作成カード -->
+              <div class="techo-add-card" @click="openNewPageModal" style="min-height: 220px;">
+                <span class="add-icon-big">＋</span>
+                <span style="font-size: 15px; font-weight: 800;">新しい手帳・ノートを追加</span>
+                <span style="font-size: 12px; color: #a4b0be; font-weight: 500;">講義用ノート、予定表、日記など</span>
+              </div>
+            </div><!-- /.memo-books-grid -->
+          </div><!-- /.folder-grid-area -->
+        </div><!-- /.folder-list-layout -->
+      </div>
+
+      <!-- ==============================================
+           画面2: 手帳キャンバス ＆ コントロールバー
+           ============================================== -->
+      <div v-show="currentTab === 'canvas'" class="canvas-layout">
+        <!-- 🌟 上部固定ドック（トップバー直下に操作バー ＆ そこから垂れ下がるインデックスタブ） -->
+        <div class="canvas-top-dock">
+          <!-- 1. ツール・操作バー (Toolbar: トップバー直下に密着配置) -->
+          <div class="goodnotes-toolbar" @pointerdown.stop>
+            <!-- 左: 一覧ナビ ＆ 履歴(Undo/Redo) ＆ 移動 ＆ 中央 -->
+            <div class="toolbar-section">
+              <button class="ctrl-btn" @click="currentTab = 'list'" title="手帳一覧管理画面に戻る">
+                <span>🗂️</span> 一覧
+              </button>
+              <div class="ctrl-divider"></div>
+
+              <!-- ↩ 元に戻す ＆ ↪ やり直す -->
+              <button class="ctrl-btn ctrl-icon-btn" :disabled="!canUndo" :class="{ disabled: !canUndo }" @click="undo"
+                title="元に戻す (⌘Z / Ctrl+Z)">
+                <span>↩</span>
+              </button>
+              <button class="ctrl-btn ctrl-icon-btn" :disabled="!canRedo" :class="{ disabled: !canRedo }" @click="redo"
+                title="やり直す (⌘⇧Z / Ctrl+Y)">
+                <span>↪</span>
+              </button>
+
+              <div class="ctrl-divider"></div>
+
+              <!-- ✋ 手帳移動 ＆ 🎯 画面中央 -->
+              <button class="ctrl-btn stage-move-handle" :class="{ active: isDraggingStage }"
+                @pointerdown.stop="startStageDrag" title="ドラッグして手帳の位置を自由に移動">
+                <span>✋</span> 移動
+              </button>
+              <button class="ctrl-btn ctrl-icon-btn" @click="resetStagePos" title="手帳を画面中央に戻す">
+                <span>🎯</span>
+              </button>
+            </div>
+
+            <!-- 中央: 選択アイテム操作 (選択時) または クイック付箋 (非選択時) -->
+            <div class="toolbar-section toolbar-center">
+              <div v-if="activeItem" class="item-action-bar">
+                <span class="action-bar-label">選択中:</span>
+                <input v-if="activeItem.item_type === 'sticker'" class="image-size-range" type="range" min="50"
+                  max="600" :value="activeItem.width" aria-label="画像の幅" @pointerdown="recordHistory"
+                  @keydown="recordHistory" @input="resizeImage(activeItem, $event.target.value)" />
+                <button class="ctrl-btn btn-xs" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
+                <button class="ctrl-btn btn-xs" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
+                <button class="ctrl-btn btn-xs" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
+                <button class="ctrl-btn btn-xs" @click="duplicateItem(activeItem)" title="付箋を複製">複製</button>
+                <button class="ctrl-btn btn-xs btn-danger-icon" @click="removeItem(activeItem.id)"
+                  title="剥がす">🗑️</button>
+              </div>
+              <div v-else class="quick-stickies-group">
+                <span class="ctrl-label-muted">付箋:</span>
+                <div class="quick-colors-row">
+                  <button v-for="c in stickyColors.slice(0, 5)" :key="c.color" class="quick-color-btn"
+                    :style="{ backgroundColor: c.color }" :title="`${c.name}の付箋を追加`"
+                    @click="quickDropSticky(c.color)"></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 右: 用紙セグメント ＆ 整列 -->
+            <div class="toolbar-section">
+              <div class="segmented-control">
+                <button :class="['segment-btn', { active: paperStyle === 'grid' }]" @click="paperStyle = 'grid'"
+                  title="方眼ノート用紙">方眼</button>
+                <button :class="['segment-btn', { active: paperStyle === 'lines' }]" @click="paperStyle = 'lines'"
+                  title="横罫線ノート用紙">罫線</button>
+                <button :class="['segment-btn', { active: paperStyle === 'blank' }]" @click="paperStyle = 'blank'"
+                  title="白紙・無地用紙">無地</button>
+              </div>
+              <div class="ctrl-divider"></div>
+              <button class="ctrl-btn" @click="arrangeSheets" title="開いている手帳ページを綺麗に整列">
+                <span>▥</span> 整列
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. トップバー・操作バーから「垂れ下がる」ページ切り替えタブバー (Hanging Tabs) -->
+          <div class="goodnotes-tabbar hanging-tabbar" ref="tabbarRef" role="tablist" aria-label="手帳ページ"
+            :aria-busy="isSwitchingPage">
+            <div class="tabbar-scroll-area">
+              <div v-for="page in openTabs" :key="page.id"
+                :class="['goodnotes-tab', 'hanging-tab', { active: currentPageId === page.id }]" role="tab" tabindex="0"
+                :aria-selected="currentPageId === page.id" :aria-disabled="isSwitchingPage"
+                @keydown.enter.prevent="switchPage(page.id)" @keydown.space.prevent="switchPage(page.id)"
+                draggable="false" @pointerdown.stop="startTabPointerDrag($event, page.id)"
+                @click="clickPageTab(page.id)">
+                <span class="tab-badge">PAGE {{ page.page_number }}</span>
+                <span class="tab-title">{{ page.title }}</span>
+                <div class="tab-actions-group" @pointerdown.stop @click.stop>
+                  <button class="tab-btn-icon" :disabled="isSwitchingPage" title="このページを机に並べる" aria-label="このページを机に並べる"
+                    @click="placePageBeside(page.id)">⊞</button>
+                  <button class="tab-btn-icon" title="タイトル変更" aria-label="タイトル変更"
+                    @click="openRenameModal(page)">✏️</button>
+                  <button class="tab-btn-icon btn-hide-tab" :disabled="isSwitchingPage" title="タブを閉じる（ページは削除されません）"
+                    aria-label="タブを閉じる（ページは削除されません）" @click="closeSheet(page.id)">×</button>
+                </div>
+              </div>
+              <button class="btn-goodnotes-new-page hanging-new-btn" @click="openAddSheetModal" title="手帳一覧から机に追加">
+                <span>＋ 追加</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🌟 ワークスペース（左パレット ＋ 手帳デスク ＋ 右ズーム） -->
+        <div class="canvas-workspace">
+          <!-- 左パレット再表示ボタン（折りたたみ時） -->
+          <button v-if="isPaletteCollapsed" class="palette-open-trigger" @click="isPaletteCollapsed = false">
+            <span>🎨</span> ツールを開く ▶
+          </button>
+
+          <!-- 左パレット -->
+          <aside :class="['stationery-palette', { collapsed: isPaletteCollapsed, 'mobile-open': mobilePaletteOpen }]">
+            <div class="palette-header-row">
+              <span style="font-size: 11px; font-weight: 800; color: #8395a7;">✏️ ツールパレット</span>
+              <button class="palette-close-btn" @click="isPaletteCollapsed = true; mobilePaletteOpen = false"
+                title="パレットを収納">◀ 閉じる</button>
+            </div>
+
+            <div class="palette-box">
+              <h3 class="palette-title">✏️ 付箋をつくる</h3>
+              <textarea v-model="newStickyContent" class="note-textarea" rows="3"
+                placeholder="講義メモ、提出課題、日記..."></textarea>
+
+              <div style="font-size: 11px; color: #7f8c8d; margin-top: 6px;">付箋カラー:</div>
+              <div class="color-swatches">
+                <button v-for="c in stickyColors" :key="c.color" :style="{ backgroundColor: c.color }"
+                  :class="['color-swatch', { active: selectedColor === c.color }]" :title="c.name"
+                  @click="selectedColor = c.color"></button>
+              </div>
+              <button class="btn btn-post-note btn-full" @click="addSticky">＋ 付箋を貼る</button>
+            </div>
+
+            <div class="palette-box">
+              <h3 class="palette-title">🎨 シールを貼る</h3>
+              <label class="upload-trigger">
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display: none;"
+                  @change="handleImageFile" />
+                <span>📷 写真・画像を貼る</span>
+              </label>
+              <p class="desk-help">画像をページへドロップ、またはコピーして貼り付け。貼った画像はドラッグで移動できます。</p>
+              <div style="font-size: 11px; color: #7f8c8d; margin-top: 8px;">おすすめシール:</div>
+              <div class="preset-stickers-list">
+                <button v-for="s in presetStickers" :key="s.name" class="preset-sticker-item" @click="addPreset(s)">
+                  <img :src="s.icon" :alt="s.name" />
+                  <span>{{ s.name }}</span>
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          <!-- モバイル：パレット背面オーバーレイ -->
+          <div v-if="mobilePaletteOpen" class="mobile-palette-overlay" @click="mobilePaletteOpen = false"></div>
+
+          <!-- モバイル：選択アイテム操作バー（アイテム選択中に下部へ浮かぶ） -->
+          <div v-if="activeItem" class="mobile-item-actions" @pointerdown.stop>
+            <input v-if="activeItem.item_type === 'sticker'" class="image-size-range mobile-size-range" type="range"
+              min="50" max="600" :value="activeItem.width" aria-label="画像の幅" @pointerdown="recordHistory"
+              @input="resizeImage(activeItem, $event.target.value)" />
+            <button class="mobile-item-btn" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
+            <button class="mobile-item-btn" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
+            <button class="mobile-item-btn" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
+            <button class="mobile-item-btn" @click="duplicateItem(activeItem)" title="複製">複製</button>
+            <button class="mobile-item-btn mobile-item-danger" @click="removeItem(activeItem.id)"
+              title="剥がす">🗑️</button>
+          </div>
+
+          <!-- モバイル：画面下部ツールバー（ツール・履歴・用紙・ズーム・整列） -->
+          <div class="mobile-toolbar" @pointerdown.stop>
+            <div class="mobile-toolbar-scroll">
+              <button class="mobile-tool-btn" :class="{ active: mobilePaletteOpen }" @click="toggleMobilePalette">
+                <span>🎨</span> ツール
+              </button>
+              <button class="mobile-tool-btn mobile-icon-btn" :disabled="!canUndo" @click="undo" title="元に戻す">
+                <span>↩</span> 戻す
+              </button>
+              <button class="mobile-tool-btn mobile-icon-btn" :disabled="!canRedo" @click="redo" title="やり直す">
+                <span>↪</span> やり直し
+              </button>
+
+              <div class="mobile-paper-control" role="group" aria-label="用紙スタイル">
+                <button :class="['mobile-paper-btn', { active: paperStyle === 'grid' }]" @click="paperStyle = 'grid'"
+                  title="方眼ノート用紙">方眼</button>
+                <button :class="['mobile-paper-btn', { active: paperStyle === 'lines' }]" @click="paperStyle = 'lines'"
+                  title="横罫線ノート用紙">罫線</button>
+                <button :class="['mobile-paper-btn', { active: paperStyle === 'blank' }]" @click="paperStyle = 'blank'"
+                  title="白紙・無地用紙">無地</button>
+              </div>
+
+              <button class="mobile-tool-btn" :disabled="zoomLevel <= .3" @click="setZoom(zoomLevel - .1)">
+                <span>－</span> 縮小
+              </button>
+              <button class="mobile-tool-btn" @click="setZoom(fitScale)">
+                <span>%</span> {{ Math.round(zoomLevel / fitScale * 100) }}
+              </button>
+              <button class="mobile-tool-btn" :disabled="zoomLevel >= 2" @click="setZoom(zoomLevel + .1)">
+                <span>＋</span> 拡大
+              </button>
+              <button class="mobile-tool-btn" @click="arrangeSheets">
+                <span>▥</span> 整列
+              </button>
+              <button class="mobile-tool-btn" @click="resetStagePos" title="手帳を画面中央へ">
+                <span>🎯</span> 中央
+              </button>
+            </div>
+          </div>
+
+          <!-- 手帳ビューポート（全画面デスク ＆ 背景ドラッグ可能） -->
+          <section class="notebook-desk" :class="{ 'is-panning': isDraggingStage }" @pointerdown="startStageDrag"
+            ref="deskRef" @dragover.prevent="onDeskDragOver" @drop.prevent="onDeskDrop">
+            <!-- 手帳中央ステージ（画面全体の中央に配置 ＆ JSで自由移動） -->
+            <div class="techo-stage" :style="{ transform: `translate(calc(-50% + ${stagePos.x}px), ${stagePos.y}px)` }">
+              <p class="desk-hint">タブを机へドラッグして並べる · ページの見出しで移動 · 背景をドラッグして見渡す</p>
+              <div class="sheet-plane" ref="sheetPlaneRef" :style="{ transform: `scale(${zoomLevel})` }">
+                <!-- 大学ノート本体 -->
+                <div v-for="sheet in visibleSheets" :key="sheet.id"
+                  :class="['campus-notebook', 'desk-sheet', `paper-${paperStyle}`, { 'sheet-active': currentPageId === sheet.id, 'sheet-topmost': topSheetId === sheet.id, 'sheet-dragging': draggingSheetId === sheet.id }]"
+                  :style="{ left: `${sheet.x}px`, top: `${sheet.y}px`, zIndex: sheetZ(sheet.id) }"
+                  :ref="el => { if (sheet.id === currentPageId) notebookRef = el; }" @dragover.prevent.stop
+                  @drop.prevent.stop="dropImageOnSheet($event, sheet.id)" @pointerdown.capture="touchSheet(sheet.id)">
+                  <div class="binder-spine">
+                    <div v-for="n in 12" :key="n" class="binder-hole"></div>
+                  </div>
+                  <div class="red-margin-line"></div>
+
+                  <div class="notebook-meta-header sheet-handle" @pointerdown.stop="startSheetDrag($event, sheet)"
+                    @click="focusSheet(sheet.id)" title="ドラッグしてこのページを移動（クリックで最前面）">
+                    <span>⠿ {{ pages.find(p => p.id === sheet.id)?.title || '手帳ノート' }}</span>
+                    <div class="sheet-header-actions" @pointerdown.stop>
+                      <button v-if="currentPageId !== sheet.id" class="ctrl-btn"
+                        :disabled="isSwitchingPage || imageBusy" @click="switchPage(sheet.id)">このページを編集</button>
+                      <span v-else class="sheet-editing">編集中</span>
+                      <button class="ctrl-btn" @click="openRenameModal(pages.find(p => p.id === sheet.id))"
+                        aria-label="ページ名を変更" title="ページ名を変更">✎</button>
+                      <button class="ctrl-btn sheet-close-btn" :disabled="isSwitchingPage || imageBusy"
+                        @click="closeSheet(sheet.id)" title="タブを閉じる（ページは削除されません）"
+                        aria-label="タブを閉じる（ページは削除されません）">×</button>
+                    </div>
+                  </div>
+
+                  <!-- キャンバス上の配置アイテム -->
+                  <div v-for="item in sheetItems(sheet.id)" :key="item.id"
+                    :class="['techo-draggable-item', item.item_type, { selected: currentPageId === sheet.id && selectedId === item.id }]"
+                    :style="{
+                      left: `${item.x}px`,
+                      top: `${item.y}px`,
+                      width: `${item.width}px`,
+                      height: item.height ? `${item.height}px` : 'auto',
+                      transform: `rotate(${item.rotation}deg)`,
+                      zIndex: item.z_index,
+                      backgroundColor: item.item_type === 'sticky_note' ? item.bg_color : 'transparent'
+                    }" @pointerdown="currentPageId === sheet.id && !isSwitchingPage && startDrag($event, item)">
+                    <template v-if="item.item_type === 'sticky_note'">
+                      <div class="washi-tape"></div>
+                      <div class="sticky-inner-text">
+                        <textarea v-model="item.content" :readonly="currentPageId !== sheet.id || isSwitchingPage"
+                          class="sticky-editor" @pointerdown.stop @focus="recordHistory"></textarea>
+                      </div>
+                    </template>
+                    <template v-else-if="item.item_type === 'sticker'">
+                      <div class="techo-sticker-wrap">
+                        <img :src="item.image_url" :alt="item.content" class="sticker-graphic" draggable="false" />
+                      </div>
+                    </template>
+                    <button v-if="currentPageId === sheet.id" class="remove-badge" @click.stop="removeItem(item.id)"
+                      @pointerdown.stop title="付箋・シールをはがす" aria-label="付箋・シールをはがす">×</button>
+                  </div>
+
+                  <!-- 空状態案内 -->
+                  <div v-if="sheetItems(sheet.id).length === 0" class="sheet-empty">
+                    <span class="sheet-empty-icon">📖</span>
+                    <strong>このページにはまだ付箋やシールがありません</strong>
+                    <p>左の <kbd>＋ 付箋を貼る</kbd> か、写真・画像をここへドロップしてください。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div v-if="draggedPageId" class="page-drag-ghost"
+            :style="{ left: `${tabDragPoint.x + 14}px`, top: `${tabDragPoint.y + 14}px` }">＋ {{ pages.find(p => p.id ===
+            draggedPageId)?.title }} をここに並べる</div>
+          <aside class="desk-zoom" aria-label="ズームとレイヤー" @pointerdown.stop>
+            <button type="button" aria-label="ズームイン" :disabled="zoomLevel >= 2"
+              @click="setZoom(zoomLevel + .1)">＋</button>
+            <input type="range" min="30" max="200" step="1" :value="Math.round(zoomLevel / fitScale * 100)"
+              @input="setZoom($event.target.value / 100 * fitScale)" aria-label="表示倍率"
+              :aria-valuetext="`${Math.round(zoomLevel / fitScale * 100)}%`" />
+            <button type="button" aria-label="ズームアウト" :disabled="zoomLevel <= .3"
+              @click="setZoom(zoomLevel - .1)">−</button>
+            <output aria-live="polite">{{ Math.round(zoomLevel / fitScale * 100) }}%</output>
+            <button type="button" class="zoom-reset" @click="setZoom(fitScale)" title="100%に戻す">100%</button>
+            <button type="button" class="zoom-reset" @click="arrangeSheets" title="全ページを整列して表示">全体</button>
+            <div class="dock-divider" role="separator"></div>
+            <p class="dock-label">レイヤー</p>
+            <div class="dock-layer-btns">
+              <button type="button" title="選択中を前面へ" :disabled="!activeItem"
+                @click="activeItem && bringToFront(activeItem)">⤴️</button>
+              <button type="button" title="選択中を背面へ" :disabled="!activeItem"
+                @click="activeItem && sendToBack(activeItem)">⤵️</button>
+              <button type="button" class="wide" title="選択中の傾きをリセット" :disabled="!activeItem"
+                @click="activeItem && resetItemRotation(activeItem)">水平に</button>
+              <button type="button" class="wide" title="選択中を複製" :disabled="!activeItem"
+                @click="activeItem && duplicateItem(activeItem)">複製する</button>
+            </div>
+            <p class="dock-hint">{{ activeItem ? '選択中を整頓' : '付箋を選ぶと操作可' }}</p>
+          </aside>
+          <div v-if="imageBusy" class="image-progress" role="status">画像を読み込んでいます…</div>
+        </div>
+      </div>
+
+      <!-- ==============================================
+           画面3: 共有掲示板
+           ============================================== -->
+      <div v-show="currentTab === 'board'" class="board-layout">
+        <div class="community-shell">
+          <header class="community-heading">
+            <div>
+              <span class="community-eyebrow">QUAD COMMUNITY</span>
+              <h2>みんなの掲示板<span>☕</span></h2>
+              <p>ひとことから、つながろう。手帳の予定やアイデア、日々のつぶやきを気軽にシェア！</p>
+            </div>
+            <button class="btn btn-save" :disabled="boardLoading || boardBusy" @click="fetchBoard">↻ {{ boardLoading ?
+              '更新中' : '最新に更新' }}</button>
+          </header>
+          <div class="community-columns">
+            <aside class="community-sidebar">
+              <div class="community-profile">
+                <div class="community-avatar">{{ (currentUser?.display_name || '客').slice(0, 1) }}</div>
+                <strong>{{ currentUser?.display_name || 'ゲスト' }}</strong>
+                <p>{{ currentUser?.circle_name || '学生' }}</p>
+                <span>{{ boardPosts.length }} 件の投稿</span>
+              </div>
+              <nav class="community-filters" aria-label="投稿の絞り込み">
+                <button v-for="filter in boardFilters" :key="filter.id" :class="{ active: boardFilter === filter.id }"
+                  :aria-pressed="boardFilter === filter.id" @click="boardFilter = filter.id">
+                  {{ filter.label }}
+                </button>
+              </nav>
+              <div class="community-guide">
+                <strong>小さな会話をはじめよう</strong>
+                <p>気になる投稿にリアクション（❤️ 👏 💡 ☕）。質問や応援は返信スレッドで届けよう。</p>
+                <p style="font-size: 11px; margin-top: 8px; color: #2e7d52;">{{ isFlaskOnline ? 'Flaskサーバー同期中' :
+                  'ローカルモード（ブラウザ保存）' }}</p>
+              </div>
+            </aside>
+            <section class="community-feed" aria-label="タイムライン">
+              <!-- SNS投稿フォーム (Composer) -->
+              <form class="community-composer" @submit.prevent="submitBoardPost">
+                <div class="composer-header">
+                  <div class="composer-label">
+                    <span class="community-avatar small">{{ (currentUser?.display_name || '客').slice(0, 1) }}</span>
+                    <span>今日はどんなことをシェアする？</span>
+                  </div>
+                  <button type="button" class="composer-quick-share-btn" @click="shareCurrentTecho"
+                    title="現在開いている手帳の内容を引用してシェア">
+                    <span>📖 今日の手帳をシェア</span>
+                  </button>
+                </div>
+                <div class="share-mode-tabs" role="tablist" aria-label="シェアモード切替">
+                  <button type="button" role="tab" :class="['share-mode-tab', { active: boardShareMode === 'talk' }]"
+                    @click="setShareMode('talk')">💬 つぶやき・話題</button>
+                  <button type="button" role="tab"
+                    :class="['share-mode-tab', { active: boardShareMode === 'techo_page' }]"
+                    @click="setShareMode('techo_page')">📖 手帳ページをシェア</button>
+                  <button type="button" role="tab" :class="['share-mode-tab', { active: boardShareMode === 'sticker' }]"
+                    @click="setShareMode('sticker')">🎨 シールをシェア</button>
+                </div>
+                <div v-if="boardShareMode === 'techo_page'" class="share-panel">
+                  <div class="share-panel-title">📖 共有する手帳ページを選ぶ</div>
+                  <select v-model="sharePageId" class="composer-select" aria-label="共有する手帳ページ">
+                    <option :value="null" disabled>手帳ページを選択してください</option>
+                    <option v-for="pg in pages" :key="pg.id" :value="pg.id">P{{ pg.page_number || '?' }}：{{ pg.title }}
+                    </option>
+                  </select>
+                  <div v-if="sharePagePreview" class="mini-techo">
+                    <div class="mini-techo-head"><span>📒 {{ sharePagePreview.title }}</span><span
+                        class="mini-techo-badge">プレビュー</span></div>
+                    <div v-if="!sharePagePreview.notes.length && !sharePagePreview.stickers.length" class="share-hint">
+                      このページにはまだ付箋・シールがありません。</div>
+                    <div v-for="(n, i) in sharePagePreview.notes.slice(0, 3)" :key="'n'+i" class="mini-note">📌 {{ n }}
+                    </div>
+                    <div v-if="sharePagePreview.stickers.length" class="mini-sticker-row">
+                      <img v-for="(st, j) in sharePagePreview.stickers.slice(0, 6)" :key="'s'+j"
+                        :src="resolveBoardImage(st.image_url)" :alt="st.content || 'シール'" class="mini-sticker-img"
+                        loading="lazy" />
+                    </div>
+                  </div>
+                  <div v-else class="share-hint">手帳ページを選ぶとプレビューが表示されます。</div>
+                </div>
+                <div v-if="boardShareMode === 'sticker'" class="share-panel">
+                  <div class="share-panel-title">🎨 共有するオリジナルシールを選ぶ・作る</div>
+                  <input v-model="shareStickerName" class="form-input" maxlength="40" placeholder="シール名（例：カフェ勉強シール）"
+                    aria-label="シール名" />
+                  <div class="composer-sticker-row" style="border-top:0; padding-top:0;">
+                    <button type="button" v-for="st in shareStickerChoices" :key="st.key"
+                      :class="['sticker-chip-btn', { selected: shareStickerKey === st.key }]"
+                      @click="pickShareSticker(st)" :title="st.name">
+                      <img :src="st.icon" :alt="st.name"
+                        style="width:26px; height:26px; object-fit:contain; vertical-align:middle;" /> {{ st.name }}
+                    </button>
+                  </div>
+                  <label class="upload-trigger" style="align-self:flex-start;">
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none;"
+                      @change="handleShareStickerFile" />
+                    <span>📷 画像をシールとしてアップロード</span>
+                  </label>
+                  <div v-if="shareStickerPreview" class="post-sticker-card" style="margin:0;">
+                    <img :src="shareStickerPreview" alt="共有シールプレビュー" class="post-sticker-img" />
+                    <div>
+                      <div class="post-sticker-name">{{ shareStickerName || 'オリジナルシール' }}</div>
+                      <div class="post-sticker-cat">手帳のシール帳に追加できます</div>
+                    </div>
+                  </div>
+                </div>
+                <input v-model="newBoardTitle" class="form-input" maxlength="100" aria-label="投稿タイトル"
+                  placeholder="話題のタイトル（例: 今週の予定、ゼミの相談、おすすめカフェなど）" required />
+                <textarea v-model="newBoardContent" class="form-input" maxlength="2000" rows="3" aria-label="投稿本文"
+                  placeholder="近況、相談、手帳のアイデアなど、気軽に書いてみよう。" required></textarea>
+
+                <!-- タグクイック選択 -->
+                <div class="composer-tags-bar">
+                  <span class="tag-hint">🏷️ タグ:</span>
+                  <button type="button" v-for="tag in boardTopicTags" :key="tag" class="tag-chip-btn"
+                    @click="insertTag(tag)">
+                    {{ tag }}
+                  </button>
+                </div>
+
+                <!-- シール添付ピッカー -->
+                <div class="composer-sticker-row">
+                  <span class="tag-hint">✨ シール:</span>
+                  <button type="button" v-for="st in boardPresetStickers" :key="st.emoji"
+                    :class="['sticker-chip-btn', { selected: selectedBoardSticker === st.emoji }]"
+                    @click="toggleBoardSticker(st.emoji)" :title="st.label">
+                    {{ st.emoji }}
+                  </button>
+                  <span v-if="selectedBoardSticker" class="selected-sticker-badge">
+                    添付中: {{ selectedBoardSticker }}
+                    <button type="button" class="sticker-remove-btn" @click="selectedBoardSticker = null"
+                      title="シール添付を取り消す">×</button>
+                  </span>
+                </div>
+
+                <div class="composer-footer">
+                  <span>{{ newBoardContent.length }} / 2000</span>
+                  <button class="btn btn-save"
+                    :disabled="boardBusy || boardLoading || !newBoardTitle.trim() || !newBoardContent.trim()">
+                    {{ boardBusy ? '投稿中…' : '＋ 投稿する' }}
+                  </button>
+                </div>
+              </form>
+
+              <!-- フィードツールバー（検索＆並び替え） -->
+              <div class="feed-toolbar">
+                <label class="feed-search">
+                  <span>⌕</span>
+                  <input v-model="boardSearch" aria-label="投稿を検索" placeholder="投稿本文・タイトル・ユーザー・タグで検索..." />
+                </label>
+                <select v-model="boardSort" aria-label="並び順">
+                  <option value="new">新着順</option>
+                  <option value="popular">リアクション順</option>
+                </select>
+              </div>
+
+              <p v-if="boardError" class="community-error" role="alert">{{ boardError }} <button class="btn"
+                  @click="fetchBoard">再読み込み</button></p>
+              <p class="feed-count" aria-live="polite">{{ filteredBoardPosts.length }} 件の投稿</p>
+
+              <div v-if="!filteredBoardPosts.length" class="community-empty">
+                <span>💬</span>
+                <h3>{{ boardSearch ? '投稿が見つかりませんでした' : 'まだ投稿がありません' }}</h3>
+                <p>{{ boardSearch ? '別のキーワードで検索してみてください。' : '上の投稿欄から最初のひとことを投稿してみましょう！' }}</p>
+              </div>
+
+              <!-- 投稿カード一覧 -->
+              <article v-for="post in filteredBoardPosts" :key="post.id" class="social-post">
+                <header class="social-post-header">
+                  <span class="community-avatar" :style="{ background: post.bg_color || '#e0eee3' }">
+                    {{ (post.author_name || '客').slice(0, 1) }}
+                  </span>
+                  <div class="post-header-meta">
+                    <strong>{{ post.author_name }}</strong>
+                    <p>
+                      <span class="post-circle-tag">{{ post.circle_name || 'コミュニティ' }}</span>
+                      <span>· {{ boardTime(post) }}</span>
+                    </p>
+                  </div>
+                  <span v-if="post.is_pinned" class="post-pinned">📌 お知らせ</span>
+                  <button v-if="post.user_id === currentUser?.id" class="post-delete-btn"
+                    @click="confirmDeleteBoardPost(post)" title="この投稿を削除">
+                    🗑️
+                  </button>
+                </header>
+
+                <div :class="['share-post-badge', post.post_type || 'talk']">
+                  <span v-if="!post.post_type || post.post_type === 'talk'">💬 つぶやき・話題</span>
+                  <span v-else-if="post.post_type === 'techo_page'">📖 手帳ページシェア</span>
+                  <span v-else-if="post.post_type === 'sticker'">🎨 オリジナルシール</span>
+                </div>
+                <h3>{{ post.title }}</h3>
+                <p class="social-post-body">{{ post.content }}</p>
+                <div v-if="post.sticker_url" class="post-sticker-display" :title="'添付シール: ' + post.sticker_url">
+                  {{ post.sticker_url }}
+                </div>
+                <div v-if="post.post_type === 'techo_page' && post.shared_page_data" class="post-techo-card">
+                  <div class="mini-techo">
+                    <div class="mini-techo-head"><span>📒 {{ post.shared_page_data.title || '手帳ページ' }}</span><span
+                        class="mini-techo-badge">page {{ post.shared_page_data.page_number || '?' }}</span></div>
+                    <div v-for="(n, i) in (post.shared_page_data.notes || []).slice(0, 4)" :key="'pn'+i"
+                      class="mini-note">📌 {{ n }}</div>
+                    <div v-if="(post.shared_page_data.stickers || []).length" class="mini-sticker-row">
+                      <img v-for="(st, j) in (post.shared_page_data.stickers || []).slice(0, 6)" :key="'ps'+j"
+                        :src="resolveBoardImage(st.image_url)" :alt="st.content || 'シール'" class="mini-sticker-img"
+                        loading="lazy" />
+                    </div>
+                  </div>
+                  <button class="post-import-btn" :disabled="boardBusy" @click="importSharedPage(post)">📥
+                    自分の手帳に取り込む</button>
+                </div>
+                <div v-if="post.post_type === 'sticker' && post.shared_sticker_data" class="post-sticker-card">
+                  <img :src="resolveBoardImage(post.shared_sticker_data.icon || post.shared_sticker_data.image_url)"
+                    :alt="post.shared_sticker_data.name || 'シール'" class="post-sticker-img" loading="lazy" />
+                  <div style="flex:1; min-width:0;">
+                    <div class="post-sticker-name">🎨 {{ post.shared_sticker_data.name || 'オリジナルシール' }}</div>
+                    <div class="post-sticker-cat">{{ post.shared_sticker_data.category || 'オリジナル' }} ・手帳で使えます</div>
+                    <button class="post-import-btn sticker-btn" :disabled="boardBusy"
+                      @click="importSharedSticker(post)">✨ マイシールに追加</button>
+                  </div>
+                </div>
+
+                <!-- マルチリアクション＆返信アクションバー -->
+                <div class="social-actions-bar">
+                  <div class="reaction-buttons-group">
+                    <button
+                      :class="['reaction-pill-btn', { 'heart-active active': post.likes?.includes(currentUser?.id) }]"
+                      :disabled="boardBusy || boardLoading" @click="toggleReaction(post, 'likes')" title="いいね！">
+                      <span>{{ post.likes?.includes(currentUser?.id) ? '❤️' : '🤍' }}</span>
+                      <span>いいね</span>
+                      <b>{{ post.likes?.length || 0 }}</b>
+                    </button>
+                    <button
+                      :class="['reaction-pill-btn', { 'clap-active active': (post.claps || []).includes(currentUser?.id) }]"
+                      :disabled="boardBusy || boardLoading" @click="toggleReaction(post, 'claps')" title="拍手・すごい！">
+                      <span>👏</span>
+                      <span>すごい</span>
+                      <b>{{ (post.claps || []).length }}</b>
+                    </button>
+                    <button
+                      :class="['reaction-pill-btn', { 'idea-active active': (post.ideas || []).includes(currentUser?.id) }]"
+                      :disabled="boardBusy || boardLoading" @click="toggleReaction(post, 'ideas')" title="なるほど・参考になる！">
+                      <span>💡</span>
+                      <span>なるほど</span>
+                      <b>{{ (post.ideas || []).length }}</b>
+                    </button>
+                    <button
+                      :class="['reaction-pill-btn', { 'coffee-active active': (post.coffees || []).includes(currentUser?.id) }]"
+                      :disabled="boardBusy || boardLoading" @click="toggleReaction(post, 'coffees')" title="おつかれさま！">
+                      <span>☕</span>
+                      <span>おつかれ</span>
+                      <b>{{ (post.coffees || []).length }}</b>
+                    </button>
+                  </div>
+
+                  <button class="action-thread-btn" :aria-expanded="expandedPost === post.id"
+                    @click="expandedPost = expandedPost === post.id ? null : post.id">
+                    <span>💬 返信スレッド</span>
+                    <b>{{ post.comments?.length || 0 }}</b>
+                  </button>
+                </div>
+
+                <!-- 返信スレッドエリア -->
+                <section v-if="expandedPost === post.id" class="post-replies" aria-label="返信スレッド">
+                  <div v-if="!post.comments?.length" style="color: #718077; font-size: 12px; margin-bottom: 10px;">
+                    最初の返信を送って会話をはじめよう！</div>
+                  <div v-else class="post-reply-thread">
+                    <div v-for="comment in post.comments" :key="comment.id" class="post-reply-bubble">
+                      <span class="community-avatar small">{{ (comment.author_name || '客').slice(0, 1) }}</span>
+                      <div class="reply-bubble-content">
+                        <div class="reply-bubble-header">
+                          <strong>{{ comment.author_name }}</strong>
+                          <small>{{ boardTime(comment) }}</small>
+                        </div>
+                        <p>{{ comment.content }}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <form class="reply-form" @submit.prevent="submitBoardComment(post)">
+                    <textarea v-model="replyDrafts[post.id]" maxlength="500" rows="2" class="form-input"
+                      aria-label="返信内容" placeholder="温かい返信を書く（500文字以内）..." required></textarea>
+                    <button class="btn btn-save"
+                      :disabled="boardBusy || boardLoading || !(replyDrafts[post.id] || '').trim()">返信する</button>
+                  </form>
+                </section>
+              </article>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- モーダル1: ユーザー切り替え・新規登録 -->
+    <div v-if="showUserModal" class="modal-backdrop" @click.self="showUserModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">👤 アカウントログイン</h3>
+        <label
+          style="font-size: 12px; font-weight: 700; color: #4a5568; margin-bottom: 6px; display: block;">アカウントを選択してログイン:</label>
+        <div
+          style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; max-height: 180px; overflow-y: auto;">
+          <div v-for="u in usersList" :key="u.id"
+            style="padding: 10px; border: 1px solid #ebdcd0; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
+            :style="{ background: currentUser?.id === u.id ? '#eef5fb' : '#fff' }" @click="selectUser(u)">
+            <div>
+              <strong>{{ u.display_name }}</strong>
+              <span style="font-size: 11px; color: #7f8c8d; margin-left: 6px;">(@{{ u.username }})</span>
+            </div>
+            <span style="font-size: 11px; background: #eee; padding: 2px 8px; border-radius: 10px;">{{ u.circle_name
+              }}</span>
+          </div>
+        </div>
+
+        <div style="border-top: 1px dashed #dcdde1; padding-top: 14px; margin-top: 4px;">
+          <label
+            style="font-size: 12px; font-weight: 700; color: #4a5568; margin-bottom: 6px; display: block;">ユーザーIDでログイン:</label>
+          <div style="display: flex; gap: 8px;">
+            <input v-model="loginUsername" placeholder="ユーザーIDを入力 (例: taro123)" class="form-input" style="flex: 1;"
+              @keyup.enter="loginByUsername" />
+            <button class="btn btn-save" style="white-space: nowrap;" @click="loginByUsername">ログイン</button>
+          </div>
+        </div>
+
+        <div class="modal-actions" style="justify-content: space-between;">
+          <button class="btn" style="background: #ccc;" @click="showUserModal = false">閉じる</button>
+          <button class="btn btn-save" @click="openSignupModal">＋ アカウント作成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル1b: アカウント作成 -->
+    <div v-if="showSignupModal" class="modal-backdrop" @click.self="showSignupModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">✨ アカウント作成</h3>
+        <div class="form-group">
+          <label>ユーザーID（ログインID）:</label>
+          <input v-model="newUserForm.username" placeholder="例: taro123" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label>表示名（ニックネーム）:</label>
+          <input v-model="newUserForm.display_name" placeholder="例: 山田太郎" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label>所属・グループ:</label>
+          <input v-model="newUserForm.circle_name" placeholder="例: 写真サークル、2組" class="form-input" />
+        </div>
+        <button class="btn btn-save btn-full" @click="createNewUser">アカウント作成＆ログイン</button>
+        <div class="modal-actions" style="justify-content: space-between; margin-top: 14px;">
+          <button class="btn" style="background: #eee;" @click="backToLoginModal">← ログインに戻る</button>
+          <button class="btn" style="background: #ccc;" @click="showSignupModal = false">閉じる</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル2: 新規ページ作成 -->
+    <div v-if="showNewPageModal" class="modal-backdrop" @click.self="showNewPageModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">📑 新しい手帳・ノートを作成</h3>
+        <div class="form-group">
+          <label>手帳のタイトル:</label>
+          <input v-model="newPageTitle" placeholder="例: 5月の予定、試験勉強まとめ" class="form-input" autofocus />
+        </div>
+        <div class="form-group">
+          <label>保存先フォルダ:</label>
+          <select v-model="newPageFolderId" class="form-input">
+            <option value="none">📄 未分類</option>
+            <option v-for="folder in folders" :key="folder.id" :value="folder.id">📁 {{ folder.name }}</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" style="background: #ccc;" @click="showNewPageModal = false">キャンセル</button>
+          <button class="btn btn-save" @click="confirmCreatePage">手帳を作成する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル2a: 手帳一覧から机に追加 -->
+    <div v-if="showAddSheetModal" class="modal-backdrop" @click.self="showAddSheetModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">📚 手帳一覧から追加</h3>
+        <p class="modal-note" style="margin-top: 0;">机に並べたい手帳を選んでください（閉じるだけでは削除されません）。</p>
+        <div class="add-sheet-list">
+          <div v-if="pages.length === 0" class="empty-note-hint">手帳がありません。下のボタンから新規作成できます。</div>
+          <div v-for="page in pages" :key="page.id" class="add-sheet-row">
+            <span class="tab-badge">PAGE {{ page.page_number }}</span>
+            <span class="add-sheet-title">{{ page.title }}</span>
+            <span v-if="isSheetOpen(page.id)" class="active-editing-pill"><span>●</span> 表示中</span>
+            <button v-else class="btn btn-save btn-add-sheet" :disabled="isSwitchingPage || imageBusy"
+              @click="addSheetFromList(page.id)">＋ 机に追加</button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="showAddSheetModal = false; openNewPageModal()">＋ 新しい手帳を作る</button>
+          <span class="modal-spacer"></span>
+          <button class="btn" style="background: #ccc;" @click="showAddSheetModal = false">閉じる</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル2b: フォルダ新規作成 -->
+    <div v-if="showNewFolderModal" class="modal-backdrop" @click.self="showNewFolderModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">📁 新しいフォルダを作成</h3>
+        <div class="form-group">
+          <label>フォルダ名:</label>
+          <input v-model="newFolderName" placeholder="例: 講義ノート、就活、趣味" class="form-input" autofocus />
+        </div>
+        <div class="modal-actions">
+          <button class="btn" style="background: #ccc;" @click="showNewFolderModal = false">キャンセル</button>
+          <button class="btn btn-save" @click="confirmCreateFolder">フォルダを作成する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル2c: フォルダ名変更 -->
+    <div v-if="showRenameFolderModal" class="modal-backdrop" @click.self="showRenameFolderModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">✏️ フォルダ名の変更</h3>
+        <div class="form-group">
+          <label>新しいフォルダ名:</label>
+          <input v-model="renameFolderName" class="form-input" autofocus />
+        </div>
+        <div class="modal-actions">
+          <button class="btn" style="background: #ccc;" @click="showRenameFolderModal = false">キャンセル</button>
+          <button class="btn btn-save" @click="confirmRenameFolder">更新する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル3: ページタイトル変更 -->
+    <div v-if="showRenameModal" class="modal-backdrop" @click.self="showRenameModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">✏️ 手帳タイトルの変更</h3>
+        <div class="form-group">
+          <label>新しいタイトル:</label>
+          <input v-model="renameTitle" class="form-input" autofocus />
+        </div>
+        <p class="modal-note">タブの × は「机から閉じるだけ」で、ページやメモは削除されません。</p>
+        <div class="modal-actions">
+          <button v-if="pages.length > 1" class="btn btn-danger" @click="deleteRenamingPage">この手帳を完全に削除</button>
+          <span class="modal-spacer"></span>
+          <button class="btn" style="background: #ccc;" @click="showRenameModal = false">キャンセル</button>
+          <button class="btn btn-save" @click="confirmRenamePage">更新する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- モーダル4: 掲示板投稿 -->
+    <div v-if="showNewBoardModal" class="modal-backdrop" @click.self="showNewBoardModal = false">
+      <div class="modal-dialog">
+        <h3 class="modal-title">📌 掲示板に付箋を貼る</h3>
+        <div class="form-group">
+          <input v-model="newBoardTitle" placeholder="タイトル（例: 課題の締切、週末の予定）" class="form-input" />
+        </div>
+        <div class="form-group">
+          <textarea v-model="newBoardContent" placeholder="連絡内容..." rows="4" class="form-input"
+            style="resize: vertical;"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" style="background: #ccc;" @click="showNewBoardModal = false">キャンセル</button>
+          <button class="btn btn-save" @click="submitBoardPost">ピン留めする</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./assets/app.js"></script>
+</body>
+
+</html>
