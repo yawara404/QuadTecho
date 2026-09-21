@@ -1007,6 +1007,8 @@
 
         <div class="modal-actions" style="justify-content: space-between;">
           <button class="btn" style="background: #ccc;" @click="showUserModal = false">閉じる</button>
+          <button v-if="currentUser?.username !== 'guest'" class="btn" style="background: #e74c3c; color: #fff;"
+            @click="logout">ログアウト</button>
           <button class="btn btn-save" @click="openSignupModal">＋ アカウント作成</button>
         </div>
       </div>
@@ -1148,7 +1150,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js"></script>
+  <script src="./assets/app.js?v=20260922-logout"></script>
 </body>
 
 </html>

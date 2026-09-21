@@ -1492,6 +1492,23 @@
           triggerToast(`ユーザー「${username}」が見つかりません。アカウント作成から登録してください`, 'error');
         }
 
+        // ================= ログアウト =================
+        // 保存済みセッションを破棄し、ゲストに戻してログイン画面を開く。
+        async function logout() {
+          if (imageBusy.value || isSwitchingPage.value) return;
+          await saveCurrentPage(false);
+          try { localStorage.removeItem('quadtecho_active_user'); } catch (_) { }
+          const guest = usersList.value.find(u => u.username === 'guest') || usersList.value[0] || null;
+          if (guest) {
+            currentUser.value = guest;
+            await loadPages(guest.id);
+          }
+          loginUsername.value = '';
+          showSignupModal.value = false;
+          showUserModal.value = true;
+          triggerToast('ログアウトしました');
+        }
+
         function openSignupModal() {
           newUserForm.value = { username: '', display_name: '', circle_name: '' };
           showUserModal.value = false;
@@ -2096,7 +2113,7 @@
           onDeskWheel, onGestureStart, onGestureChange, onGestureEnd,
           undo, redo, canUndo, canRedo, recordHistory, resetItemRotation,
           paperStyle, zoomLevel, fitScale, quickDropSticky, bringToFront, sendToBack, duplicateItem,
-          showUserModal, showSignupModal, currentUser, usersList, newUserForm, loginUsername, selectUser, loginByUsername, createNewUser, openSignupModal, backToLoginModal,
+          showUserModal, showSignupModal, currentUser, usersList, newUserForm, loginUsername, selectUser, loginByUsername, logout, createNewUser, openSignupModal, backToLoginModal,
           pages, currentPageId, currentPage, showNewPageModal, newPageTitle,
           showRenameModal, renameTitle, switchPage, openNewPageModal, confirmCreatePage,
           openRenameModal, confirmRenamePage, deleteCurrentPage, deleteRenamingPage, saveCurrentPage,
