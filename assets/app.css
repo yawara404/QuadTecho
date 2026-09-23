@@ -2194,6 +2194,290 @@
       color: #2c3e50;
     }
 
+    /* ===================================================
+       アカウントモーダル（ログイン・切替・作成・プロフィール）
+       =================================================== */
+    .modal-dialog.account-modal {
+      width: 440px;
+      padding: 20px 22px 22px;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .account-modal .form-group {
+      margin-bottom: 0;
+    }
+
+    .account-modal .modal-title {
+      margin-bottom: 0;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .modal-close {
+      border: 0;
+      background: #f1f2f6;
+      color: #57606a;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background .15s, color .15s;
+    }
+
+    .modal-close:hover {
+      background: #e4e7ec;
+      color: #2c3e50;
+    }
+
+    .modal-hint {
+      font-size: 11.5px;
+      color: #8395a7;
+      line-height: 1.7;
+      margin: -4px 0 2px;
+    }
+
+    /* ログイン中のアカウント */
+    .account-current {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #eef5ee 0%, #e6f0e8 100%);
+      border: 1px solid #cfe3d6;
+    }
+
+    .account-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #eaf2e6;
+      color: #245448;
+      font-weight: 800;
+      font-size: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .account-avatar.small {
+      width: 32px;
+      height: 32px;
+      font-size: 13px;
+    }
+
+    /* ユーザーアイコン（画像）: 各アバター枠で円形に切り抜いて表示 */
+    .user-pill-avatar img,
+    .account-avatar img,
+    .community-avatar img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* プロフィールのアイコン編集 */
+    .avatar-editor {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-top: 6px;
+    }
+
+    .avatar-preview {
+      width: 64px;
+      height: 64px;
+      font-size: 24px;
+      overflow: hidden;
+    }
+
+    .avatar-editor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .avatar-upload-btn {
+      cursor: pointer;
+    }
+
+    .avatar-editor-hint {
+      margin: 8px 0 0;
+      font-size: 11px;
+      color: #8395a7;
+    }
+
+    .account-current-meta {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .account-current-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 15px;
+      font-weight: 800;
+      color: #1a2b21;
+      min-width: 0;
+    }
+
+    .account-current-name>span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-badge {
+      font-size: 10px;
+      font-weight: 800;
+      color: #1b5e20;
+      background: #d9efdc;
+      border: 1px solid #b6dfbc;
+      border-radius: 10px;
+      padding: 1px 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .account-current-sub {
+      font-size: 11.5px;
+      color: #6b7d70;
+      margin-top: 2px;
+      overflow-wrap: anywhere;
+    }
+
+    .account-section-title {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #7a8c80;
+      letter-spacing: .04em;
+      margin-top: 2px;
+    }
+
+    /* 切り替えリスト */
+    .account-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .account-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      border: 1px solid #ebdcd0;
+      background: #fffdf8;
+      border-radius: 10px;
+      padding: 9px 12px;
+      font: inherit;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, transform .12s;
+    }
+
+    .account-row:hover {
+      border-color: #9dc3a8;
+      background: #f6faf5;
+      transform: translateY(-1px);
+    }
+
+    .account-row-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .account-row-name {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #2c3e50;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-row-sub {
+      font-size: 11px;
+      color: #8395a7;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-circle {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #6b5d45;
+      background: #f1e9d8;
+      border-radius: 10px;
+      padding: 2px 9px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      max-width: 42%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* IDでログイン */
+    .account-login-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .account-login-row .form-input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .account-login-row .btn {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* 操作ボタン */
+    .account-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 12px;
+      border-top: 1px dashed #e2dacd;
+    }
+
+    .account-actions .btn {
+      flex: 1 1 auto;
+      justify-content: center;
+      white-space: nowrap;
+    }
+
+    .btn-danger {
+      background: #fdecea;
+      color: #c0392b;
+    }
+
+    .btn-danger:hover {
+      background: #f9d9d5;
+    }
+
     .form-group {
       margin-bottom: 12px;
     }
@@ -2716,19 +3000,71 @@
       font-weight: 700;
     }
 
-    .post-delete-btn {
+    /* 三点メニュー（投稿の右上・チャットのメッセージ右上） */
+    .post-menu {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .post-menu-btn {
       border: none;
       background: transparent;
       cursor: pointer;
-      color: #a4b0be;
-      font-size: 13px;
-      padding: 4px;
-      border-radius: 6px;
-      transition: color .15s;
+      color: #8a97a3;
+      font-size: 18px;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 999px;
+      transition: color .15s, background .15s;
     }
 
-    .post-delete-btn:hover {
+    .post-menu-btn:hover,
+    .post-menu-btn.open {
+      color: #2c3e50;
+      background: #eef2ee;
+    }
+
+    .post-menu-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 168px;
+      background: #fff;
+      border: 1px solid var(--notebook-border);
+      border-radius: 12px;
+      box-shadow: 0 12px 28px rgba(34, 49, 63, 0.16);
+      padding: 6px;
+      z-index: 30;
+    }
+
+    .post-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 700;
+      color: #2c3e50;
+      padding: 9px 10px;
+      border-radius: 8px;
+      transition: background .15s, color .15s;
+    }
+
+    .post-menu-item:hover {
+      background: #f4f7f4;
+    }
+
+    .post-menu-item.danger {
       color: #e74c3c;
+    }
+
+    .post-menu-item.danger:hover {
       background: #fbeeed;
     }
 
@@ -4691,6 +5027,24 @@
   white-space: nowrap;
 }
 
+/* チャットの三点メニューはメッセージ上部のツール行に置き、上方向へ開く */
+.circle-chat-meta-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.circle-chat-meta-tools .post-menu-btn {
+  font-size: 15px;
+  padding: 1px 6px;
+}
+
+.chat-menu .post-menu-dropdown {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
 .circle-chat-bubble p {
   font-size: 13px;
   line-height: 1.7;
@@ -5024,6 +5378,31 @@
 
   .circle-page-stickers .circle-sticker-grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+}
+
+/* アカウントモーダル：狭い画面では1カラムに積んで収める */
+@media (max-width: 520px) {
+  .modal-dialog.account-modal {
+    width: 100%;
+    max-width: calc(100vw - 20px);
+    padding: 16px 16px 18px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    border-radius: 14px;
+  }
+
+  .account-actions .btn {
+    flex: 1 1 100%;
+  }
+
+  .account-login-row {
+    flex-wrap: wrap;
+  }
+
+  .account-login-row .form-input,
+  .account-login-row .btn {
+    flex: 1 1 100%;
   }
 }
 

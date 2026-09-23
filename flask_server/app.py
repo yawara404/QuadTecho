@@ -11,9 +11,22 @@ QuadTecho (クアッド・テチョウ) Flask バックエンドAPIサーバー
 import os
 import uuid
 import sqlite3
+import unicodedata
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+
+
+def _normalize_login_id(value) -> str:
+    """ユーザーIDを正規化する。
+
+    日本語IMEで入力された全角英数字・記号・全角スペース（NFKC）を半角へ揃え、
+    前後の空白を除去して小文字化する。これにより「ｙａｙａ＿ｍｏｄｅｒａｔｅ」の
+    ような全角入力でも既存アカウントへログインできる。
+    """
+    if value is None:
+        return ""
+    return unicodedata.normalize("NFKC", str(value)).strip().lower()
 
 
 def _load_dotenv(path: str) -> None:
@@ -51,6 +64,23 @@ init_db()
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# アイコン画像URLの検証。アップロード済みパス（/uploads/...）か data:image、
+# 外部URLのみ許可する。空文字・None は「未設定（アイコン解除）」として扱う。
+MAX_AVATAR_URL_LEN = 2_000_000  # data URL の上限（約2MB）
+
+def _sanitize_avatar_url(value):
+    if value is None:
+        return None
+    url = str(value).strip()
+    if not url:
+        return None
+    if len(url) > MAX_AVATAR_URL_LEN:
+        raise ValueError("アイコン画像が大きすぎます")
+    if (url.startswith("/uploads/") or url.startswith("data:image/")
+            or url.startswith("http://") or url.startswith("https://")):
+        return url
+    raise ValueError("アイコンの形式が正しくありません")
+
 # ==========================================================
 # 1. ユーザー管理 API
 # ==========================================================
@@ -59,7 +89,7 @@ def allowed_file(filename: str) -> bool:
 def get_users():
     """登録ユーザー一覧取得（簡単切り替え用）"""
     conn = get_db_connection()
-    users = conn.execute("SELECT id, username, display_name, circle_name, circle_id, created_at FROM users ORDER BY id ASC").fetchall()
+    users = conn.execute("SELECT id, username, display_name, circle_name, circle_id, avatar_url, created_at FROM users ORDER BY id ASC").fetchall()
     conn.close()
     return jsonify({
         "success": True,
@@ -97,7 +127,7 @@ def _resolve_circle_name(cursor, user_id, circle_id, circle_name):
 def user_login():
     """ユーザーログイン（未登録の場合は新規自動作成）"""
     data = request.get_json() or {}
-    username = (data.get("username") or "").strip().lower()
+    username = _normalize_login_id(data.get("username"))
     display_name = (data.get("display_name") or "").strip()
     circle_name = (data.get("circle_name") or "未所属").strip()
     circle_id = data.get("circle_id")
@@ -149,12 +179,13 @@ def user_login():
 
 @app.route("/api/users/<int:user_id>", methods=["PUT"])
 def update_user(user_id):
-    """プロフィール更新（ニックネーム・所属。ユーザーIDは変更不可）"""
+    """プロフィール更新（ニックネーム・所属・アイコン。ユーザーIDは変更不可）"""
     data = request.get_json() or {}
     display_name = (data.get("display_name") or "").strip()
     circle_name = (data.get("circle_name") or "").strip() or "未所属"
     has_circle_id = "circle_id" in data
     circle_id = data.get("circle_id")
+    has_avatar = "avatar_url" in data
 
     if not display_name:
         return jsonify({"success": False, "error": "ニックネームを入力してください"}), 400
@@ -164,16 +195,30 @@ def update_user(user_id):
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "指定のサークルが見つかりません"}), 400
 
+    # アイコンURLの検証（指定時のみ）
+    avatar_url = None
+    if has_avatar:
+        try:
+            avatar_url = _sanitize_avatar_url(data.get("avatar_url"))
+        except ValueError as e:
+            return jsonify({"success": False, "error": str(e)}), 400
+
     conn = get_db_connection()
     cursor = conn.cursor()
     user = cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
         conn.close()
         return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
-    cursor.execute(
-        "UPDATE users SET display_name = ? WHERE id = ?",
-        (display_name, user_id),
-    )
+    if has_avatar:
+        cursor.execute(
+            "UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?",
+            (display_name, avatar_url, user_id),
+        )
+    else:
+        cursor.execute(
+            "UPDATE users SET display_name = ? WHERE id = ?",
+            (display_name, user_id),
+        )
     try:
         if has_circle_id:
             _resolve_circle_name(cursor, user_id, circle_id, circle_name)
@@ -267,7 +312,7 @@ def get_circle(circle_id):
         if not circle:
             return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
         members = conn.execute("""
-            SELECT u.id, u.username, u.display_name, u.circle_name, m.joined_at
+            SELECT u.id, u.username, u.display_name, u.circle_name, u.avatar_url, m.joined_at
             FROM circle_members m JOIN users u ON u.id = m.user_id
             WHERE m.circle_id = ? ORDER BY m.joined_at ASC
         """, (circle_id,)).fetchall()
@@ -328,7 +373,8 @@ MAX_STICKER_IMAGE_LEN = 400_000
 
 _STICKER_SELECT = """
     SELECT s.id, s.circle_id, s.creator_user_id, s.name, s.image_url, s.category,
-           s.downloads_count, s.created_at, u.display_name AS creator_name
+           s.downloads_count, s.created_at, u.display_name AS creator_name,
+           u.avatar_url AS creator_avatar_url
     FROM circle_stickers s JOIN users u ON u.id = s.creator_user_id
 """
 
@@ -539,7 +585,7 @@ def get_circle_messages(circle_id):
             return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
         rows = conn.execute("""
             SELECT m.id, m.circle_id, m.user_id, m.content, m.created_at,
-                   u.display_name AS author_name
+                   u.display_name AS author_name, u.avatar_url AS author_avatar_url
             FROM circle_messages m JOIN users u ON u.id = m.user_id
             WHERE m.circle_id = ? ORDER BY m.id DESC LIMIT ?
         """, (circle_id, limit)).fetchall()
@@ -574,10 +620,30 @@ def create_circle_message(circle_id):
         conn.commit()
         row = cursor.execute("""
             SELECT m.id, m.circle_id, m.user_id, m.content, m.created_at,
-                   u.display_name AS author_name
+                   u.display_name AS author_name, u.avatar_url AS author_avatar_url
             FROM circle_messages m JOIN users u ON u.id = m.user_id WHERE m.id = ?
         """, (message_id,)).fetchone()
         return jsonify({"success": True, "chat_message": dict(row)}), 201
+    finally:
+        conn.close()
+
+
+@app.route("/api/circles/<int:circle_id>/messages/<int:message_id>", methods=["DELETE"])
+def delete_circle_message(circle_id, message_id):
+    """チャットメッセージを削除（投稿者本人のみ）"""
+    user_id = request.args.get("user_id", type=int)
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id FROM circle_messages WHERE id = ? AND circle_id = ?",
+            (message_id, circle_id)).fetchone()
+        if not row:
+            return jsonify({"success": False, "error": "メッセージが見つかりません"}), 404
+        if user_id and row["user_id"] != user_id:
+            return jsonify({"success": False, "error": "削除権限がありません"}), 403
+        conn.execute("DELETE FROM circle_messages WHERE id = ?", (message_id,))
+        conn.commit()
+        return jsonify({"success": True, "message": "メッセージを削除しました"})
     finally:
         conn.close()
 
@@ -916,6 +982,7 @@ def get_board():
             b.id,
             b.user_id,
             u.display_name AS author_name,
+            u.avatar_url AS author_avatar_url,
             u.circle_name,
             b.title,
             b.content,
@@ -949,7 +1016,8 @@ def get_board():
         post["likes"] = [r[0] for r in conn.execute(
             "SELECT user_id FROM bulletin_likes WHERE post_id = ?", (post["id"],))]
         post["comments"] = [dict(r) for r in conn.execute("""
-            SELECT c.id, c.user_id, c.content, c.created_at, u.display_name AS author_name
+            SELECT c.id, c.user_id, c.content, c.created_at, u.display_name AS author_name,
+                   u.avatar_url AS author_avatar_url
             FROM bulletin_comments c JOIN users u ON u.id = c.user_id
             WHERE c.post_id = ? ORDER BY c.id
         """, (post["id"],))]
@@ -1123,13 +1191,30 @@ def find_available_port(start_port=5000, max_tries=10):
                 return p
     return start_port
 
+def _port_is_free(port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) != 0
+
+# 既定の優先ポート。MAMP Apache の ProxyPass が 5002 を指しているため、
+# ここを先頭にしないと公開URL（/QuadTecho/api/）が 503 になる。
+DEFAULT_PORT_ORDER = (5002, 5000, 5001, 5003)
+
+def resolve_port() -> int:
+    """起動ポートを決める。QUADTECHO_PORT があればそれを優先。"""
+    env_port = os.environ.get("QUADTECHO_PORT")
+    if env_port:
+        try:
+            return find_available_port(int(env_port))
+        except ValueError:
+            pass
+    for p in DEFAULT_PORT_ORDER:
+        if _port_is_free(p):
+            return p
+    return find_available_port(DEFAULT_PORT_ORDER[0])
+
 if __name__ == "__main__":
-    # 開始ポートは環境変数 QUADTECHO_PORT で上書き可（既定 5000）
-    try:
-        start_port = int(os.environ.get("QUADTECHO_PORT", "5000"))
-    except ValueError:
-        start_port = 5000
-    port = find_available_port(start_port)
+    port = resolve_port()
     print("==================================================")
     print(f" 📓 QuadTecho サーバー起動中: http://127.0.0.1:{port}")
     print(" (本番用 WSGI サーバー Waitress にて稼働中)")

@@ -18,7 +18,9 @@
   <!-- Vue 3 (CDN: Live Serverで直接動作) -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
-  <link rel="stylesheet" href="./assets/app.css?v=20260923-nav" />
+  <!-- 注意: app.css / app.js の ?v= は変更時に必ず両方そろえて更新する
+       （CDN/ブラウザのキャッシュで HTML と JS がずれると画面が描画できなくなる） -->
+  <link rel="stylesheet" href="./assets/app.css?v=20260924-postmenu" />
 </head>
 
 <body>
@@ -53,7 +55,7 @@
           <span>🗂️</span> 手帳一覧
         </button>
         <button :class="['nav-tab-btn', { active: currentTab === 'canvas' }]" @click="currentTab = 'canvas'">
-          <span>📖</span> 手帳を開く
+          <span></span> 手帳を開く
         </button>
         <button :class="['nav-tab-btn', { active: currentTab === 'board' }]" @click="switchToBoard">
           <span>📌</span> 掲示板
@@ -71,7 +73,11 @@
         </div>
 
         <div class="user-pill" @click="showUserModal = true">
-          <span class="user-pill-avatar">{{ (currentUser?.display_name || 'ゲ').slice(0, 1) }}</span>
+          <span class="user-pill-avatar">
+            <img v-if="currentUser?.avatar_url" :src="avatarSrc(currentUser.avatar_url)"
+              :alt="currentUser?.display_name || 'アイコン'" />
+            <template v-else>{{ (currentUser?.display_name || 'ゲ').slice(0, 1) }}</template>
+          </span>
           <span class="user-pill-name">{{ currentUser?.display_name || 'ゲスト' }}</span>
           <span class="user-pill-circle" style="font-size: 10px; color: #dcdde1;">({{ currentUser?.circle_name || '学生'
             }})</span>
@@ -550,8 +556,8 @@
                   マイシール（入手したシール {{ myStickers.length }}枚）:
                 </div>
                 <div class="preset-stickers-list">
-                  <button v-for="(s, i) in myStickers" :key="'my' + i" class="preset-sticker-item"
-                    :title="s.name" @click="addMyStickerToTecho(s)">
+                  <button v-for="(s, i) in myStickers" :key="'my' + i" class="preset-sticker-item" :title="s.name"
+                    @click="addMyStickerToTecho(s)">
                     <img :src="s.icon" :alt="s.name" />
                     <span>{{ s.name }}</span>
                   </button>
@@ -737,7 +743,11 @@
           <div class="community-columns">
             <aside class="community-sidebar">
               <div class="community-profile">
-                <div class="community-avatar">{{ (currentUser?.display_name || '客').slice(0, 1) }}</div>
+                <div class="community-avatar">
+                  <img v-if="currentUser?.avatar_url" :src="avatarSrc(currentUser.avatar_url)"
+                    :alt="currentUser?.display_name || 'アイコン'" />
+                  <template v-else>{{ (currentUser?.display_name || '客').slice(0, 1) }}</template>
+                </div>
                 <strong>{{ currentUser?.display_name || 'ゲスト' }}</strong>
                 <p>{{ currentUser?.circle_name || '学生' }}</p>
                 <span>{{ boardPosts.length }} 件の投稿</span>
@@ -769,7 +779,11 @@
               <form class="community-composer" @submit.prevent="submitBoardPost">
                 <div class="composer-header">
                   <div class="composer-label">
-                    <span class="community-avatar small">{{ (currentUser?.display_name || '客').slice(0, 1) }}</span>
+                    <span class="community-avatar small">
+                      <img v-if="currentUser?.avatar_url" :src="avatarSrc(currentUser.avatar_url)"
+                        :alt="currentUser?.display_name || 'アイコン'" />
+                      <template v-else>{{ (currentUser?.display_name || '客').slice(0, 1) }}</template>
+                    </span>
                     <span>今日はどんなことをシェアする？</span>
                   </div>
                 </div>
@@ -837,14 +851,15 @@
                   </div>
                 </div>
 
-                <input v-model="newBoardTitle" class="form-input" maxlength="100" aria-label="投稿タイトル"
-                  placeholder="タイトル" required />
+                <input v-model="newBoardTitle" class="form-input" maxlength="100" aria-label="投稿タイトル" placeholder="タイトル"
+                  required />
                 <textarea v-model="newBoardContent" class="form-input" maxlength="2000" rows="3" aria-label="投稿本文"
                   placeholder="近況、相談、手帳のアイデアなど、気軽に書いてみよう。" required></textarea>
 
                 <!-- タグ・シールは畳んでおき、必要なときだけ開く -->
                 <button type="button" class="composer-options-toggle"
-                  :aria-expanded="showComposerOptions ? 'true' : 'false'" @click="showComposerOptions = !showComposerOptions">
+                  :aria-expanded="showComposerOptions ? 'true' : 'false'"
+                  @click="showComposerOptions = !showComposerOptions">
                   <span>＋ タグ・シールを追加</span>
                   <span v-if="selectedBoardSticker" class="composer-options-badge">✨ {{ selectedBoardSticker }}</span>
                   <span class="composer-options-caret">{{ showComposerOptions ? '▲' : '▼' }}</span>
@@ -908,7 +923,9 @@
               <article v-for="post in filteredBoardPosts" :key="post.id" class="social-post">
                 <header class="social-post-header">
                   <span class="community-avatar" :style="{ background: post.bg_color || '#e0eee3' }">
-                    {{ (post.author_name || '客').slice(0, 1) }}
+                    <img v-if="post.author_avatar_url" :src="avatarSrc(post.author_avatar_url)"
+                      :alt="post.author_name || 'アイコン'" />
+                    <template v-else>{{ (post.author_name || '客').slice(0, 1) }}</template>
                   </span>
                   <div class="post-header-meta">
                     <strong>{{ post.author_name }}</strong>
@@ -918,10 +935,15 @@
                     </p>
                   </div>
                   <span v-if="post.is_pinned" class="post-pinned">📌 お知らせ</span>
-                  <button v-if="post.user_id === currentUser?.id" class="post-delete-btn"
-                    @click="confirmDeleteBoardPost(post)" title="この投稿を削除">
-                    🗑️
-                  </button>
+                  <div v-if="post.user_id === currentUser?.id" class="post-menu">
+                    <button type="button" class="post-menu-btn" :class="{ open: openPostMenu === post.id }"
+                      @click.stop="togglePostMenu(post.id)" title="メニュー" aria-haspopup="menu"
+                      :aria-expanded="openPostMenu === post.id" aria-label="投稿メニュー">⋮</button>
+                    <div v-if="openPostMenu === post.id" class="post-menu-dropdown" role="menu">
+                      <button type="button" class="post-menu-item danger" role="menuitem"
+                        @click.stop="confirmDeleteBoardPost(post)">🗑️ 投稿を削除</button>
+                    </div>
+                  </div>
                 </header>
 
                 <div :class="['share-post-badge', post.post_type || 'talk']">
@@ -1006,7 +1028,11 @@
                     最初の返信を送って会話をはじめよう！</div>
                   <div v-else class="post-reply-thread">
                     <div v-for="comment in post.comments" :key="comment.id" class="post-reply-bubble">
-                      <span class="community-avatar small">{{ (comment.author_name || '客').slice(0, 1) }}</span>
+                      <span class="community-avatar small">
+                        <img v-if="comment.author_avatar_url" :src="avatarSrc(comment.author_avatar_url)"
+                          :alt="comment.author_name || 'アイコン'" />
+                        <template v-else>{{ (comment.author_name || '客').slice(0, 1) }}</template>
+                      </span>
                       <div class="reply-bubble-content">
                         <div class="reply-bubble-header">
                           <strong>{{ comment.author_name }}</strong>
@@ -1045,8 +1071,8 @@
               <div class="user-sync-circle">{{ myCircle ? myCircle.member_count + ' 人のメンバー' : 'サークルに入部してみよう'
                 }}</div>
             </div>
-            <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;"
-              @click="fetchCircles">↻ 更新</button>
+            <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;" @click="fetchCircles">↻
+              更新</button>
           </div>
         </div>
 
@@ -1091,8 +1117,8 @@
               </div>
               <div class="form-group">
                 <label>紹介文:</label>
-                <textarea v-model="newCircleForm.description" maxlength="500" rows="2"
-                  placeholder="例: 週1で集まって曲を作っています" class="form-input"></textarea>
+                <textarea v-model="newCircleForm.description" maxlength="500" rows="2" placeholder="例: 週1で集まって曲を作っています"
+                  class="form-input"></textarea>
               </div>
               <button class="btn btn-save btn-full" @click="createCircle">立部する（作成者も自動入部）</button>
             </div>
@@ -1167,11 +1193,26 @@
                   まだ発言がありません。最初のひとことを送ってみましょう！</div>
                 <div v-for="m in circleMessages" :key="m.id"
                   :class="['circle-chat-row', { mine: m.user_id === currentUser?.id }]">
-                  <span class="community-avatar small">{{ (m.author_name || '客').slice(0, 1) }}</span>
+                  <span class="community-avatar small">
+                    <img v-if="m.author_avatar_url" :src="avatarSrc(m.author_avatar_url)"
+                      :alt="m.author_name || 'アイコン'" />
+                    <template v-else>{{ (m.author_name || '客').slice(0, 1) }}</template>
+                  </span>
                   <div class="circle-chat-bubble">
                     <div class="circle-chat-meta">
                       <strong>{{ m.author_name }}</strong>
-                      <small>{{ boardTime(m) }}</small>
+                      <span class="circle-chat-meta-tools">
+                        <small>{{ boardTime(m) }}</small>
+                        <span v-if="m.user_id === currentUser?.id" class="post-menu chat-menu">
+                          <button type="button" class="post-menu-btn" :class="{ open: openChatMenu === m.id }"
+                            @click.stop="toggleChatMenu(m.id)" title="メニュー" aria-haspopup="menu"
+                            :aria-expanded="openChatMenu === m.id" aria-label="メッセージメニュー">⋮</button>
+                          <div v-if="openChatMenu === m.id" class="post-menu-dropdown" role="menu">
+                            <button type="button" class="post-menu-item danger" role="menuitem"
+                              @click.stop="confirmDeleteCircleMessage(m)">🗑️ 削除</button>
+                          </div>
+                        </span>
+                      </span>
                     </div>
                     <p>{{ m.content }}</p>
                   </div>
@@ -1232,8 +1273,8 @@
                 <div v-if="myStickers.length" class="circle-sticker-mine">
                   <div class="circle-sticker-mine-label">マイシールから選ぶ:</div>
                   <div class="circle-sticker-chip-row">
-                    <button v-for="(s, i) in myStickers" :key="'pick' + i" class="circle-sticker-chip"
-                      :title="s.name" @click="pickMyStickerForCircleShare(s)">
+                    <button v-for="(s, i) in myStickers" :key="'pick' + i" class="circle-sticker-chip" :title="s.name"
+                      @click="pickMyStickerForCircleShare(s)">
                       <img :src="s.icon" :alt="s.name" />
                     </button>
                   </div>
@@ -1255,8 +1296,8 @@
                     </button>
                     <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;"
                       :disabled="circleStickerBusy" @click="useCircleSticker(s)">手帳で使う</button>
-                    <button v-if="s.creator_user_id === currentUser?.id" class="ctrl-btn"
-                      style="color: #e74c3c;" title="配布を取り下げる" @click="deleteCircleSticker(s)">🗑️</button>
+                    <button v-if="s.creator_user_id === currentUser?.id" class="ctrl-btn" style="color: #e74c3c;"
+                      title="配布を取り下げる" @click="deleteCircleSticker(s)">🗑️</button>
                   </div>
                 </div>
               </div>
@@ -1266,76 +1307,124 @@
       </div>
     </main>
 
-    <!-- モーダル1: ユーザー切り替え・新規登録 -->
+    <!-- モーダル1: アカウント切替・ログイン -->
     <div v-if="showUserModal" class="modal-backdrop" @click.self="showUserModal = false">
-      <div class="modal-dialog">
-        <h3 class="modal-title">👤 アカウントログイン</h3>
-        <label
-          style="font-size: 12px; font-weight: 700; color: #4a5568; margin-bottom: 6px; display: block;">アカウントを選択してログイン:</label>
-        <div
-          style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; max-height: 180px; overflow-y: auto;">
-          <div v-for="u in modalUsers" :key="u.id"
-            style="padding: 10px; border: 1px solid #ebdcd0; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
-            :style="{ background: currentUser?.id === u.id ? '#eef5fb' : '#fff' }" @click="selectUser(u)">
-            <div>
-              <strong>{{ u.display_name }}</strong>
-              <span style="font-size: 11px; color: #7f8c8d; margin-left: 6px;">(@{{ u.username }})</span>
+      <div class="modal-dialog account-modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+        <header class="modal-head">
+          <h3 id="account-modal-title" class="modal-title">👤 アカウント</h3>
+          <button type="button" class="modal-close" @click="showUserModal = false" aria-label="閉じる">✕</button>
+        </header>
+
+        <!-- ログイン中のアカウント -->
+        <div class="account-current">
+          <span class="account-avatar">
+            <img v-if="currentUser?.avatar_url" :src="avatarSrc(currentUser.avatar_url)"
+              :alt="currentUser?.display_name || 'アイコン'" />
+            <template v-else>{{ (currentUser?.display_name || 'ゲ').slice(0, 1) }}</template>
+          </span>
+          <div class="account-current-meta">
+            <div class="account-current-name">
+              <span>{{ currentUser?.display_name || 'ゲスト' }}</span>
+              <span class="account-badge">ログイン中</span>
             </div>
-            <span style="font-size: 11px; background: #eee; padding: 2px 8px; border-radius: 10px;">{{ u.circle_name
-              }}</span>
+            <div class="account-current-sub">
+              @{{ currentUser?.username || 'guest' }} · {{ currentUser?.circle_name || '未所属' }}
+            </div>
           </div>
         </div>
 
-        <div style="border-top: 1px dashed #dcdde1; padding-top: 14px; margin-top: 4px;">
-          <label
-            style="font-size: 12px; font-weight: 700; color: #4a5568; margin-bottom: 6px; display: block;">ユーザーIDでログイン:</label>
-          <div style="display: flex; gap: 8px;">
-            <input v-model="loginUsername" placeholder="ユーザーIDを入力 (例: taro123)" class="form-input" style="flex: 1;"
-              @keyup.enter="loginByUsername" />
-            <button class="btn btn-save" style="white-space: nowrap;" @click="loginByUsername">ログイン</button>
+        <!-- アカウントの切り替え -->
+        <template v-if="switchableUsers?.length">
+          <p class="account-section-title">アカウントを切り替え</p>
+          <div class="account-list">
+            <button type="button" v-for="u in (switchableUsers || [])" :key="u.id" class="account-row"
+              @click="selectUser(u)">
+              <span class="account-avatar small">
+                <img v-if="u.avatar_url" :src="avatarSrc(u.avatar_url)" :alt="u.display_name || 'アイコン'" />
+                <template v-else>{{ (u.display_name || 'ゲ').slice(0, 1) }}</template>
+              </span>
+              <span class="account-row-meta">
+                <span class="account-row-name">{{ u.display_name }}</span>
+                <span class="account-row-sub">@{{ u.username }}</span>
+              </span>
+              <span class="account-circle">{{ u.circle_name || '未所属' }}</span>
+            </button>
           </div>
+        </template>
+
+        <!-- ユーザーIDでログイン -->
+        <p class="account-section-title">ユーザーIDでログイン</p>
+        <div class="account-login-row">
+          <input v-model="loginUsername" class="form-input" placeholder="ユーザーID または ニックネーム" aria-label="ユーザーIDまたはニックネーム"
+            @keyup.enter="loginByUsername" />
+          <button class="btn btn-save" @click="loginByUsername">ログイン</button>
         </div>
 
-        <div class="modal-actions" style="justify-content: space-between;">
-          <button class="btn" style="background: #ccc;" @click="showUserModal = false">閉じる</button>
-          <button v-if="currentUser?.username !== 'guest'" class="btn" style="background: #e74c3c; color: #fff;"
-            @click="logout">ログアウト</button>
-          <button v-if="currentUser?.username !== 'guest'" class="btn btn-secondary"
-            @click="openProfileModal">⚙️ プロフィール</button>
-          <button class="btn btn-save" @click="openSignupModal">＋ アカウント作成</button>
+        <!-- アカウント操作 -->
+        <div class="account-actions">
+          <button class="btn btn-secondary" @click="openSignupModal">＋ アカウント作成</button>
+          <button v-if="currentUser?.username !== 'guest'" class="btn btn-secondary" @click="openProfileModal">⚙️
+            プロフィール</button>
+          <button v-if="currentUser?.username !== 'guest'" class="btn btn-danger" @click="logout">ログアウト</button>
         </div>
       </div>
     </div>
 
     <!-- モーダル1c: プロフィール編集 -->
     <div v-if="showProfileModal" class="modal-backdrop" @click.self="showProfileModal = false">
-      <div class="modal-dialog">
-        <h3 class="modal-title">⚙️ プロフィール編集</h3>
-        <div style="font-size: 12px; color: #7f8c8d; margin-bottom: 12px;">@{{ currentUser?.username }}（ユーザーIDは変更できません）</div>
+      <div class="modal-dialog account-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+        <header class="modal-head">
+          <h3 id="profile-modal-title" class="modal-title">⚙️ プロフィール</h3>
+          <button type="button" class="modal-close" @click="showProfileModal = false" aria-label="閉じる">✕</button>
+        </header>
+        <p class="modal-hint">@{{ currentUser?.username }}（ユーザーIDは変更できません）</p>
+        <div class="form-group">
+          <label>アイコン:</label>
+          <div class="avatar-editor">
+            <span class="account-avatar avatar-preview">
+              <img v-if="profileForm.avatar_url" :src="avatarSrc(profileForm.avatar_url)"
+                :alt="profileForm.display_name || 'アイコン'" />
+              <template v-else>{{ (profileForm.display_name || currentUser?.display_name || 'ゲ').slice(0, 1)
+                }}</template>
+            </span>
+            <div class="avatar-editor-actions">
+              <label class="btn btn-secondary avatar-upload-btn">
+                📷 画像を選ぶ
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="uploadAvatar" hidden />
+              </label>
+              <button v-if="profileForm.avatar_url" type="button" class="btn btn-secondary"
+                @click="profileForm.avatar_url = ''">🗑️ 削除</button>
+            </div>
+          </div>
+          <p class="avatar-editor-hint">正方形に切り抜いて保存されます（PNG・JPEG・WebP・GIF / 10MBまで）。</p>
+        </div>
         <div class="form-group">
           <label>ニックネーム:</label>
           <input v-model="profileForm.display_name" maxlength="40" placeholder="例: たろう" class="form-input" />
         </div>
         <div class="form-group">
-          <label>所属サークル（切り替え可）:</label>
+          <label>所属サークル:</label>
           <select v-model="profileForm.circle_id" class="form-input">
             <option :value="null">未所属</option>
             <option v-for="c in circlesList" :key="c.id" :value="c.id">⛺ {{ c.name }}（{{ c.member_count ?? 0
               }}人）</option>
           </select>
         </div>
-        <button class="btn btn-save btn-full" @click="saveProfile">保存する</button>
-        <div class="modal-actions" style="justify-content: space-between; margin-top: 14px;">
-          <button class="btn" style="background: #eee;" @click="showProfileModal = false; showUserModal = true;">← アカウントに戻る</button>
-          <button class="btn" style="background: #ccc;" @click="showProfileModal = false">閉じる</button>
+        <div class="account-actions">
+          <button class="btn btn-save" @click="saveProfile">保存する</button>
+          <button class="btn btn-secondary" @click="showProfileModal = false; showUserModal = true;">← アカウント</button>
         </div>
       </div>
     </div>
 
     <!-- モーダル1b: アカウント作成 -->
     <div v-if="showSignupModal" class="modal-backdrop" @click.self="showSignupModal = false">
-      <div class="modal-dialog">
-        <h3 class="modal-title">✨ アカウント作成</h3>
+      <div class="modal-dialog account-modal" role="dialog" aria-modal="true" aria-labelledby="signup-modal-title">
+        <header class="modal-head">
+          <h3 id="signup-modal-title" class="modal-title">✨ アカウント作成</h3>
+          <button type="button" class="modal-close" @click="showSignupModal = false" aria-label="閉じる">✕</button>
+        </header>
+        <p class="modal-hint">作成するとそのままログインします。ユーザーIDはログインに使います。</p>
         <div class="form-group">
           <label>ユーザーID（ログインID）:</label>
           <input v-model="newUserForm.username" placeholder="例: taro123" class="form-input" />
@@ -1352,10 +1441,9 @@
               }}人）</option>
           </select>
         </div>
-        <button class="btn btn-save btn-full" @click="createNewUser">アカウント作成＆ログイン</button>
-        <div class="modal-actions" style="justify-content: space-between; margin-top: 14px;">
-          <button class="btn" style="background: #eee;" @click="backToLoginModal">← ログインに戻る</button>
-          <button class="btn" style="background: #ccc;" @click="showSignupModal = false">閉じる</button>
+        <div class="account-actions">
+          <button class="btn btn-save" @click="createNewUser">アカウント作成＆ログイン</button>
+          <button class="btn btn-secondary" @click="backToLoginModal">← ログインに戻る</button>
         </div>
       </div>
     </div>
@@ -1472,7 +1560,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260922-marquee"></script>
+  <script src="./assets/app.js?v=20260924-postmenu"></script>
 </body>
 
 </html>

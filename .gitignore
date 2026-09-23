@@ -23,3 +23,6 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 # Detailed manual: local-only, not published on GitHub
 /WEB_SETUP.md
+# Apache/Flask reverse-proxy config for the local deployment: local-only
+/.htaccess
+/floppy.io/

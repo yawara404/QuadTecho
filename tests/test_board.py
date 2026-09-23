@@ -15,6 +15,7 @@ class BoardTests(unittest.TestCase):
         cls.original_path = database.DB_PATH
         database.DB_PATH = str(Path(cls.temp.name) / 'test.db')
         import app
+        database.init_db()
         cls.client = app.app.test_client()
 
     @classmethod

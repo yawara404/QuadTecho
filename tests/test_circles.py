@@ -150,6 +150,18 @@ class CircleTests(unittest.TestCase):
         # 入手済みのマイシールは配布が消えても残る（手帳で使い続けられる）
         self.assertEqual(len(self.client.get(f'/api/users/{taker["id"]}/stickers').json['stickers']), 1)
 
+    def test_login_normalizes_fullwidth_username(self):
+        """全角・大文字・前後空白で入力しても同じアカウントにログインできる"""
+        first = self.client.post('/api/users/login', json={
+            'username': 'yaya_moderate', 'display_name': 'wawa404'}).json['user']
+        for variant in (' YAYA_MODERATE ', 'ｙａｙａ＿ｍｏｄｅｒａｔｅ', '　ｙａｙａ＿ｍｏｄｅｒａｔｅ　'):
+            got = self.client.post('/api/users/login', json={'username': variant}).json['user']
+            self.assertEqual(got['id'], first['id'], f'{variant!r} で別アカウントが作られた')
+            self.assertEqual(got['username'], 'yaya_moderate')
+        # 表記ゆれでアカウントが増えていないこと
+        users = self.client.get('/api/users').json['users']
+        self.assertEqual(len([u for u in users if u['username'] == 'yaya_moderate']), 1)
+
     def test_circle_chat(self):
         """サークル専用ページのチャット：メンバーだけが投稿でき、履歴は古い順に返る"""
         circle = self.client.post('/api/circles', json={
@@ -192,6 +204,33 @@ class CircleTests(unittest.TestCase):
 
         # limit で件数を絞れる
         self.assertEqual(len(self.client.get(f'/api/circles/{cid}/messages?limit=1').json['messages']), 1)
+
+    def test_delete_circle_message(self):
+        """チャットの三点メニューからの削除：本人だけが削除できる"""
+        circle = self.client.post('/api/circles', json={
+            'name': '削除チャット部', 'founder_user_id': 1}).json['circle']
+        cid = circle['id']
+        owner_id = 1
+        other = self.client.post('/api/users/login', json={
+            'username': 'chat_del_other', 'display_name': '別の人'}).json['user']
+        self.client.post(f'/api/circles/{cid}/join', json={'user_id': other['id']})
+
+        msg = self.client.post(f'/api/circles/{cid}/messages', json={
+            'user_id': owner_id, 'content': '消す予定の投稿'}).json['chat_message']
+
+        # 他人のメッセージは削除できない（403）
+        self.assertEqual(self.client.delete(
+            f'/api/circles/{cid}/messages/{msg["id"]}?user_id={other["id"]}').status_code, 403)
+        # 存在しないメッセージ・サークルは 404
+        self.assertEqual(self.client.delete(
+            f'/api/circles/{cid}/messages/999999?user_id={owner_id}').status_code, 404)
+        self.assertEqual(self.client.delete(
+            f'/api/circles/999999/messages/{msg["id"]}?user_id={owner_id}').status_code, 404)
+
+        # 本人は削除でき、履歴から消える
+        self.assertEqual(self.client.delete(
+            f'/api/circles/{cid}/messages/{msg["id"]}?user_id={owner_id}').status_code, 200)
+        self.assertEqual(self.client.get(f'/api/circles/{cid}/messages').json['messages'], [])
 
     def test_user_sticker_dedupe_and_validation(self):
         """掲示板シェア等から取り込むマイシールAPIの重複排除と検証"""

@@ -1,6 +1,6 @@
     const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 
-    createApp({
+    const app = createApp({
       setup() {
         // Flaskサーバー候補ポート (5000, 5001, 5002) を自動検出
         // 公開URL https://music.wawa-app.me/QuadTecho/ 対応:
@@ -175,6 +175,23 @@
         function isLegacyDummyUsername(name) {
           return LEGACY_DUMMY_USERNAMES.includes((name || '').trim().toLowerCase());
         }
+        // ログインIDの正規化: 日本語IMEの全角英数字・記号・全角スペースを半角へ揃える
+        function normalizeLoginId(value) {
+          return (value == null ? '' : String(value))
+            .replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+            .replace(/\u3000/g, ' ')
+            .trim()
+            .toLowerCase();
+        }
+        // ユーザーIDでもニックネームでもログインできるようにする
+        function findUserByIdentifier(list, identifier) {
+          const key = normalizeLoginId(identifier);
+          if (!key) return null;
+          const arr = Array.isArray(list) ? list : [];
+          return arr.find(u => normalizeLoginId(u.username) === key)
+            || arr.find(u => normalizeLoginId(u.display_name) === key)
+            || null;
+        }
         const currentUser = ref({ id: 1, username: 'guest', display_name: 'ゲスト', circle_name: '未所属' });
         const usersList = ref([
           { id: 1, username: 'guest', display_name: 'ゲスト', circle_name: '未所属' }
@@ -191,10 +208,13 @@
           if (!currentUser.value || currentUser.value.username === 'guest') return usersList.value;
           return usersList.value.filter(u => u.id === currentUser.value.id || !isTestAccount(u));
         });
+        // ログイン中のアカウントは上部に別途表示するため、切り替え候補からは除く
+        const switchableUsers = computed(() =>
+          (modalUsers.value || []).filter(u => u.id !== currentUser.value?.id));
         const newUserForm = ref({ username: '', display_name: '', circle_name: '', circle_id: null });
         const loginUsername = ref('');
         const showProfileModal = ref(false);
-        const profileForm = ref({ display_name: '', circle_name: '', circle_id: null });
+        const profileForm = ref({ display_name: '', circle_name: '', circle_id: null, avatar_url: '' });
 
         // 手帳ページ管理状態
         const pages = ref([
@@ -1517,7 +1537,7 @@
             triggerToast('そのアカウントは旧ダミーのため利用できません。ゲストでご利用ください', 'error');
             return;
           }
-          const found = usersList.value.find(u => (u.username || '').toLowerCase() === username);
+          const found = findUserByIdentifier(usersList.value, loginUsername.value);
           if (found) {
             loginUsername.value = '';
             await selectUser(found);
@@ -1528,7 +1548,7 @@
               const res = await fetch(`${activeFlaskUrl}/api/users`);
               const data = await res.json();
               if (data.success && Array.isArray(data.users)) {
-                const match = data.users.find(u => (u.username || '').toLowerCase() === username);
+                const match = findUserByIdentifier(data.users, loginUsername.value);
                 if (match) {
                   if (!usersList.value.some(u => u.id === match.id)) usersList.value.push(match);
                   loginUsername.value = '';
@@ -1538,7 +1558,7 @@
               }
             } catch (_) { }
           }
-          triggerToast(`ユーザー「${username}」が見つかりません。アカウント作成から登録してください`, 'error');
+          triggerToast(`「${username}」が見つかりません。ユーザーIDかニックネームを確認するか、アカウント作成から登録してください`, 'error');
         }
 
         // ================= ログアウト =================
@@ -1546,12 +1566,8 @@
         async function logout() {
           if (imageBusy.value || isSwitchingPage.value) return;
           await saveCurrentPage(false);
-          const loggedOut = currentUser.value;
           try { localStorage.removeItem('quadtecho_active_user'); } catch (_) { }
-          if (loggedOut && loggedOut.username !== 'guest') {
-            usersList.value = usersList.value.filter(u => u.id !== loggedOut.id);
-            try { localStorage.setItem('quadtecho_users', JSON.stringify(usersList.value)); } catch (_) { }
-          }
+          // アカウント一覧からは消さない（消すと再ログインできなくなる）
           const guest = usersList.value.find(u => u.username === 'guest') || usersList.value[0] || null;
           if (guest) {
             currentUser.value = guest;
@@ -1562,6 +1578,22 @@
           showSignupModal.value = false;
           showUserModal.value = true;
           triggerToast('ログアウトしました');
+        }
+
+        // localStorage に保存されたアカウント一覧を復元（サーバー未接続時のログイン用）
+        function restoreLocalUsers() {
+          try {
+            const raw = localStorage.getItem('quadtecho_users');
+            if (!raw) return;
+            const saved = JSON.parse(raw);
+            if (!Array.isArray(saved) || saved.length === 0) return;
+            const restored = saved.filter(u => u && u.username && !isLegacyDummyUsername(u.username));
+            if (restored.length === 0) return;
+            if (!restored.some(u => (u.username || '').toLowerCase() === 'guest')) {
+              restored.unshift({ id: 1, username: 'guest', display_name: 'ゲスト', circle_name: '未所属' });
+            }
+            usersList.value = restored;
+          } catch (_) { }
         }
 
         function openSignupModal() {
@@ -1581,7 +1613,8 @@
           profileForm.value = {
             display_name: currentUser.value?.display_name || '',
             circle_name: currentUser.value?.circle_name || '',
-            circle_id: currentUser.value?.circle_id ?? null
+            circle_id: currentUser.value?.circle_id ?? null,
+            avatar_url: currentUser.value?.avatar_url || ''
           };
           showUserModal.value = false;
           showSignupModal.value = false;
@@ -1589,13 +1622,14 @@
           fetchCircles();
         }
 
-        function applyProfileLocally(displayName, circleName, circleId = null) {
+        function applyProfileLocally(displayName, circleName, circleId = null, avatarUrl) {
           const updated = {
             ...currentUser.value,
             display_name: displayName,
             circle_name: circleName,
             circle_id: circleId
           };
+          if (avatarUrl !== undefined) updated.avatar_url = avatarUrl || null;
           currentUser.value = updated;
           const idx = usersList.value.findIndex(u => u.id === updated.id);
           if (idx >= 0) usersList.value[idx] = { ...usersList.value[idx], ...updated };
@@ -1605,9 +1639,57 @@
           } catch (_) { }
         }
 
+        // プロフィール用アイコンのアップロード。
+        // 画像を正方形に中央切り抜き → 256px に縮小 → /api/upload へ保存する。
+        async function uploadAvatar(event) {
+          const file = (event.target.files || [])[0];
+          event.target.value = '';
+          if (!file) return;
+          if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+            triggerToast('PNG・JPEG・WebP・GIFの10MB以下の画像を選んでください', 'error');
+            return;
+          }
+          const objectUrl = URL.createObjectURL(file);
+          try {
+            const picture = await new Promise((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => resolve(img);
+              img.onerror = () => reject(new Error('画像を読み込めません'));
+              img.src = objectUrl;
+            });
+            const size = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const side = Math.min(picture.naturalWidth, picture.naturalHeight);
+            const sx = (picture.naturalWidth - side) / 2;
+            const sy = (picture.naturalHeight - side) / 2;
+            ctx.drawImage(picture, sx, sy, side, side, 0, 0, size, size);
+
+            let avatarUrl = canvas.toDataURL('image/webp', 0.9);
+            if (isFlaskOnline.value) {
+              const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.9));
+              const form = new FormData();
+              form.append('image', blob, 'avatar.webp');
+              const response = await fetch(`${activeFlaskUrl}/api/upload`, { method: 'POST', body: form });
+              const data = await response.json();
+              if (!response.ok || !data.success) throw new Error('画像の保存に失敗しました');
+              avatarUrl = data.url; // 相対パス（/uploads/...）で保存
+            }
+            profileForm.value.avatar_url = avatarUrl;
+            triggerToast('アイコンを設定しました。「保存する」で確定します');
+          } catch (error) {
+            triggerToast(error.message || 'アイコンを設定できませんでした', 'error');
+          } finally {
+            URL.revokeObjectURL(objectUrl);
+          }
+        }
+
         async function saveProfile() {
           const displayName = (profileForm.value.display_name || '').trim();
           const circleId = profileForm.value.circle_id ?? null;
+          const avatarUrl = profileForm.value.avatar_url || '';
           if (!displayName) {
             triggerToast('ニックネームを入力してください', 'error');
             return;
@@ -1617,7 +1699,7 @@
               const res = await fetch(`${activeFlaskUrl}/api/users/${currentUser.value.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ display_name: displayName, circle_id: circleId })
+                body: JSON.stringify({ display_name: displayName, circle_id: circleId, avatar_url: avatarUrl })
               });
               const data = await res.json();
               if (res.ok && data.success && data.user) {
@@ -1637,16 +1719,23 @@
             } catch (_) { }
           }
           // サーバー未接続時やサーバー側に存在しないIDの場合はローカル更新
-          applyProfileLocally(displayName, circleNameById(circleId), circleId);
+          applyProfileLocally(displayName, circleNameById(circleId), circleId, avatarUrl);
           showProfileModal.value = false;
           triggerToast('プロフィールを更新しました');
         }
 
         async function createNewUser() {
-          const { username, display_name } = newUserForm.value;
+          const { display_name } = newUserForm.value;
+          // 全角で入力されても半角IDとして登録する（ログイン時に一致させる）
+          const username = normalizeLoginId(newUserForm.value.username);
+          const displayName = (display_name || '').trim() || username;
           const circleId = newUserForm.value.circle_id ?? null;
-          if (!username.trim()) {
+          if (!username) {
             triggerToast('ユーザーIDを入力してください', 'error');
+            return;
+          }
+          if (usersList.value.some(u => normalizeLoginId(u.username) === username)) {
+            triggerToast(`ユーザーID「${username}」は既に登録されています。ログインしてください`, 'error');
             return;
           }
 
@@ -1656,14 +1745,15 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  username: username.trim(),
-                  display_name: display_name.trim() || username.trim(),
+                  username,
+                  display_name: displayName,
                   circle_id: circleId
                 })
               });
               const data = await res.json();
               if (data.success) {
                 usersList.value.push(data.user);
+                try { localStorage.setItem('quadtecho_users', JSON.stringify(usersList.value)); } catch (_) { }
                 await selectUser(data.user);
                 newUserForm.value = { username: '', display_name: '', circle_name: '', circle_id: null };
                 fetchCircles();
@@ -1679,8 +1769,8 @@
           const newId = Date.now();
           const userObj = {
             id: newId,
-            username: username.trim(),
-            display_name: display_name.trim() || username.trim(),
+            username,
+            display_name: displayName,
             circle_id: circleId,
             circle_name: circleNameById(circleId)
           };
@@ -1747,12 +1837,13 @@
           circleStickers.value = [];
           circleMessages.value = [];
           showCircleStickerForm.value = false;
-          if (!isFlaskOnline.value || id == null) return;
+          // サーバー未接続時は判定できないため「見つからない」扱いにはしない
+          if (!isFlaskOnline.value || id == null) return true;
           await fetchCircleStickers();
           try {
             const res = await fetch(`${activeFlaskUrl}/api/circles/${id}`);
             const data = await res.json();
-            if (data.success && data.circle) {
+            if (res.ok && data.success && data.circle) {
               const idx = circlesList.value.findIndex(c => c.id === id);
               if (idx >= 0) {
                 circlesList.value[idx] = {
@@ -1760,8 +1851,10 @@
                 };
               }
               circleMembers.value = data.circle.members || [];
+              return true;
             }
-          } catch (_) { }
+            return false;
+          } catch (_) { return false; }
         }
         function reflectCircleMembership(circle) {
           if (!circle || !currentUser.value) return;
@@ -1894,6 +1987,7 @@
         const circleChatBusy = ref(false);
         const circleChatError = ref('');
         const newCircleMessage = ref('');
+        const openChatMenu = ref(null); // 三点メニューを開いているチャットメッセージID
         let circleChatTimer = null;
 
         function circleMemberOf(circle) {
@@ -1941,6 +2035,30 @@
           finally { circleChatBusy.value = false; }
         }
 
+        // 自分のチャットメッセージを削除（三点メニューから）
+        async function confirmDeleteCircleMessage(message) {
+          openChatMenu.value = null;
+          if (circleChatBusy.value || !message) return;
+          if (!confirm('このメッセージを削除してもよろしいですか？')) return;
+          circleChatBusy.value = true;
+          try {
+            if (isFlaskOnline.value && selectedCircleId.value != null) {
+              const res = await fetch(
+                `${activeFlaskUrl}/api/circles/${selectedCircleId.value}/messages/${message.id}?user_id=${currentUser.value?.id}`,
+                { method: 'DELETE' });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || !data.success) {
+                triggerToast((data && data.error) || '削除できませんでした', 'error');
+                return;
+              }
+            }
+            circleMessages.value = circleMessages.value.filter(m => m.id !== message.id);
+            triggerToast('メッセージを削除しました');
+          } catch (_) {
+            triggerToast('削除できませんでした', 'error');
+          } finally { circleChatBusy.value = false; }
+        }
+
         // 専用ページを開いている間だけチャットを定期更新する
         function startCircleChatPolling() {
           stopCircleChatPolling();
@@ -1962,7 +2080,16 @@
         // サークル専用ページに必要なデータ（メンバー・配布シール・チャット）を読み込む
         async function loadCirclePageData() {
           if (selectedCircleId.value == null) return;
-          await selectCircle(selectedCircleId.value);
+          const id = selectedCircleId.value;
+          const found = await selectCircle(id);
+          // 削除済みサークルや古いURLで開いた場合は、行き止まりにせず一覧へ戻す
+          if (found === false) {
+            selectedCircleId.value = null;
+            stopCircleChatPolling();
+            triggerToast('サークルが見つかりませんでした', 'error');
+            if (currentTab.value === 'circle') currentTab.value = 'circles';
+            return;
+          }
           fetchCircleMessages();
         }
 
@@ -2138,6 +2265,7 @@
         const boardLoading = ref(false);
         const boardError = ref('');
         const expandedPost = ref(null);
+        const openPostMenu = ref(null); // 三点メニューを開いている投稿ID
         const replyDrafts = ref({});
         const selectedBoardSticker = ref(null);
         const boardShareMode = ref('talk');
@@ -2253,6 +2381,10 @@
           if (url.startsWith('data:') || url.startsWith('http') || url.startsWith('blob:')) return url;
           if (url.startsWith('/')) return (isFlaskOnline.value ? activeFlaskUrl : '') + url;
           return url;
+        }
+        // ユーザーアイコン用のURL解決（アップロード画像・data URL・外部URLに対応）
+        function avatarSrc(url) {
+          return resolveBoardImage(url);
         }
         const sharePagePreview = computed(() => {
           const pg = pages.value.find(pp => pp.id === sharePageId.value);
@@ -2595,7 +2727,25 @@
 
         const toggleBoardLike = (p) => toggleReaction(p, 'likes');
 
+        // 三点メニュー（投稿・チャット共通）
+        function togglePostMenu(postId) {
+          openChatMenu.value = null;
+          openPostMenu.value = openPostMenu.value === postId ? null : postId;
+        }
+
+        function toggleChatMenu(messageId) {
+          openPostMenu.value = null;
+          openChatMenu.value = openChatMenu.value === messageId ? null : messageId;
+        }
+
+        // メニュー外をクリックしたら閉じる
+        function closeOpenMenus() {
+          if (openPostMenu.value !== null) openPostMenu.value = null;
+          if (openChatMenu.value !== null) openChatMenu.value = null;
+        }
+
         async function confirmDeleteBoardPost(post) {
+          openPostMenu.value = null;
           if (!confirm(`「${post.title}」を削除してもよろしいですか？`)) return;
           boardBusy.value = true;
           try {
@@ -2707,6 +2857,109 @@
           if (parsed.tab === 'circle') loadCirclePageData();
         }
 
+        // ================= Flaskサーバー接続の検出 =================
+        // ページを開いた後にサーバーを起動した場合でも自動で切り替わるよう、
+        // 未接続の間は定期的に再検出して「ローカル保存」→「Flask同期」へ切り替える。
+        let flaskProbeTimer = null;
+
+        async function probeFlaskOnce() {
+          // 公開URL（サブパス配信）では同オリジンのAPIを確認する
+          if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            try {
+              const res = await fetch(`${activeFlaskUrl}/api/health`);
+              if (!res.ok) { isFlaskOnline.value = false; return false; }
+              try {
+                const h = await res.clone().json();
+                if (h && h.service && h.service !== 'QuadTecho Flask API') { isFlaskOnline.value = false; return false; }
+              } catch (_) { }
+              isFlaskOnline.value = true;
+              return true;
+            } catch (_) {
+              isFlaskOnline.value = false;
+              return false;
+            }
+          }
+          // ローカルは 5000〜5003 を順に探し、QuadTecho のAPIを優先する
+          for (const p of [5000, 5001, 5002, 5003]) {
+            try {
+              const res = await fetch(`http://127.0.0.1:${p}/api/health`);
+              if (!res.ok) continue;
+              try {
+                const h = await res.clone().json();
+                if (h && h.service && h.service !== 'QuadTecho Flask API') continue;
+              } catch (_) { }
+              activeFlaskUrl = `http://127.0.0.1:${p}`;
+              isFlaskOnline.value = true;
+              return true;
+            } catch (_) { }
+          }
+          isFlaskOnline.value = false;
+          return false;
+        }
+
+        // 接続できたときに、保存先がサーバーになるよう各種データを取り直す
+        async function onFlaskConnected() {
+          try {
+            const usersRes = await fetch(`${activeFlaskUrl}/api/users`);
+            const usersData = await usersRes.json();
+            if (usersData.success && Array.isArray(usersData.users)) {
+              const liveUsers = usersData.users.filter(u => !isLegacyDummyUsername(u.username));
+              if (liveUsers.length > 0) {
+                usersList.value = liveUsers;
+                try { localStorage.setItem('quadtecho_users', JSON.stringify(liveUsers)); } catch (_) { }
+              }
+              // ローカル保存中に作ったアカウントはサーバー側に無いため、
+              // 同じIDで作成してユーザーIDを揃える（保存先の食い違いを防ぐ）
+              const me = currentUser.value;
+              if (me && me.username && me.username !== 'guest') {
+                const match = findUserByIdentifier(liveUsers, me.username);
+                if (match) {
+                  if (match.id !== me.id) {
+                    currentUser.value = match;
+                    try { localStorage.setItem('quadtecho_active_user', JSON.stringify(match)); } catch (_) { }
+                  }
+                } else {
+                  const res = await fetch(`${activeFlaskUrl}/api/users/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      username: me.username,
+                      display_name: me.display_name,
+                      circle_id: me.circle_id ?? null
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.success && data.user) {
+                    currentUser.value = data.user;
+                    usersList.value.push(data.user);
+                    try { localStorage.setItem('quadtecho_active_user', JSON.stringify(data.user)); } catch (_) { }
+                    try { localStorage.setItem('quadtecho_users', JSON.stringify(usersList.value)); } catch (_) { }
+                  }
+                }
+              }
+            }
+          } catch (_) { }
+          fetchCircles();
+          fetchBoard();
+          fetchMyStickers();
+          triggerToast('Flaskサーバーに接続しました。保存先をサーバーに切り替えました ☁️');
+        }
+
+        function startFlaskProbe() {
+          if (typeof setInterval !== 'function' || flaskProbeTimer != null) return;
+          flaskProbeTimer = setInterval(async () => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            const wasOnline = isFlaskOnline.value;
+            const online = await probeFlaskOnce();
+            if (!wasOnline && online) await onFlaskConnected();
+          }, 10000);
+        }
+
+        function stopFlaskProbe() {
+          if (flaskProbeTimer != null && typeof clearInterval === 'function') clearInterval(flaskProbeTimer);
+          flaskProbeTimer = null;
+        }
+
         // ================= 初期化 ＆ ポート自動探査 =================
         onMounted(async () => {
           // 履歴トラバーサル（ブラウザの戻る/進む）を有効化
@@ -2727,6 +2980,9 @@
           window.addEventListener('keydown', handleKeyDown);
           window.addEventListener('paste', pasteImage);
 
+          // 投稿・チャットの三点メニューは画面のどこかをクリックしたら閉じる
+          window.addEventListener('click', closeOpenMenus);
+
           // トラックパッド／マウスホイール：preventDefault を確実に効かせるため
           // 非passive リスナーとして明示的に登録（テンプレートの @wheel は passive になり得る）
           if (deskRef.value && typeof deskRef.value.addEventListener === 'function') {
@@ -2745,30 +3001,9 @@
           if (deskRef.value) bindGesture(deskRef.value);
           if (typeof document !== 'undefined') bindGesture(document);
 
-          if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-            try {
-              const res = await fetch(`${activeFlaskUrl}/api/health`);
-              isFlaskOnline.value = res.ok;
-            } catch (_) { }
-          } else {
-            // 5000, 5001, 5002 ポートを自動探査
-            const candidatePorts = [5000, 5001, 5002, 5003];
-            for (const p of candidatePorts) {
-              try {
-                const res = await fetch(`http://127.0.0.1:${p}/api/health`);
-                if (res.ok) {
-                  // QuadTecho 実DBを持つポートを優先 (service名で判定)
-                  try {
-                    const h = await res.clone().json();
-                    if (h && h.service && h.service !== 'QuadTecho Flask API') continue;
-                  } catch (_) { }
-                  activeFlaskUrl = `http://127.0.0.1:${p}`;
-                  isFlaskOnline.value = true;
-                  break;
-                }
-              } catch (_) { }
-            }
-          }
+          // Flaskサーバーを検出（見つからなくても定期的に再検出して自動で切り替える）
+          await probeFlaskOnce();
+          startFlaskProbe();
 
           if (isFlaskOnline.value) {
             try {
@@ -2778,9 +3013,13 @@
                 const liveUsers = usersData.users.filter(u => !isLegacyDummyUsername(u.username));
                 if (liveUsers.length > 0) {
                   usersList.value = liveUsers;
+                  try { localStorage.setItem('quadtecho_users', JSON.stringify(liveUsers)); } catch (_) { }
                 }
               }
             } catch (_) { }
+          } else {
+            // サーバー未接続でも、以前使ったアカウントでログインできるようにする
+            restoreLocalUsers();
           }
 
           // 保存済みアカウントが一覧に存在する場合のみ復元する。
@@ -2843,7 +3082,7 @@
           onDeskWheel, onGestureStart, onGestureChange, onGestureEnd,
           undo, redo, canUndo, canRedo, recordHistory, resetItemRotation,
           paperStyle, zoomLevel, fitScale, quickDropSticky, bringToFront, sendToBack, duplicateItem,
-          showUserModal, showSignupModal, showProfileModal, profileForm, currentUser, usersList, modalUsers, newUserForm, loginUsername, selectUser, loginByUsername, logout, openProfileModal, saveProfile, createNewUser, openSignupModal, backToLoginModal,
+          showUserModal, showSignupModal, showProfileModal, profileForm, currentUser, usersList, modalUsers, switchableUsers, newUserForm, loginUsername, selectUser, loginByUsername, logout, openProfileModal, saveProfile, uploadAvatar, avatarSrc, createNewUser, openSignupModal, backToLoginModal,
           pages, currentPageId, currentPage, showNewPageModal, newPageTitle,
           showRenameModal, renameTitle, switchPage, openNewPageModal, confirmCreatePage,
           openRenameModal, confirmRenamePage, deleteCurrentPage, deleteRenamingPage, saveCurrentPage,
@@ -2861,6 +3100,7 @@
           switchToBoard, submitBoardPost, boardSearch, boardFilter, boardSort, boardBusy, boardLoading, boardError,
           expandedPost, replyDrafts, boardFilters, filteredBoardPosts, boardTime, fetchBoard, toggleBoardLike, submitBoardComment,
           boardTopicTags, boardPresetStickers, selectedBoardSticker, insertTag, toggleBoardSticker, shareCurrentTecho, toggleReaction, confirmDeleteBoardPost,
+          openPostMenu, togglePostMenu, closeOpenMenus,
           boardShareMode, sharePageId, shareStickerName, shareStickerKey, shareStickerPreview, sharePagePreview, shareStickerChoices, setShareMode, pickShareSticker, handleShareStickerFile, resolveBoardImage, importSharedPage, importSharedSticker, myStickers, showComposerOptions,
           addMySticker, addMyStickerToTecho, fetchMyStickers,
           circlesList, circleMembers, selectedCircleId, selectedCircle, myCircle, filteredCircles, circleLoading, circleSearch, newCircleForm, circleNameById, fetchCircles, switchToCircles, selectCircle, createCircle, joinCircle, leaveCircle, switchMyCircle,
@@ -2869,10 +3109,19 @@
           openCirclePage, backToCircleList, loadCirclePageData, circleMemberOf,
           circleMessages, circleChatLoading, circleChatBusy, circleChatError, newCircleMessage,
           fetchCircleMessages, sendCircleMessage,
+          openChatMenu, toggleChatMenu, confirmDeleteCircleMessage,
+          probeFlaskOnce, startFlaskProbe, stopFlaskProbe, onFlaskConnected,
           boardShareMode, sharePageId, shareStickerName, shareStickerKey, shareStickerPreview, sharePagePreview, shareStickerChoices, setShareMode, pickShareSticker, handleShareStickerFile, resolveBoardImage, importSharedPage, importSharedSticker, myStickers
         };
       }
-    }).mount('#app');
+    });
+
+    // 予期しない描画エラーで画面全体が真っ白にならないようにする。
+    // （古い app.js がキャッシュから読み込まれた場合などの保険）
+    app.config.errorHandler = (err, _instance, info) => {
+      console.error('[QuadTecho] render error:', err, info);
+    };
+    app.mount('#app');
 
 // ===== text-marquee（見切れ文字の自動スクロール。Tunedropの auto-marquee と同方式） =====
 // はみ出したテキストだけを左へ流す。画面外では停止し、モーション軽減設定では無効化する。

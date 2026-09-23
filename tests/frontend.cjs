@@ -8,18 +8,17 @@ const localStorage = storage(), sessionStorage = storage();
 let mounted, state;
 function boot() {
   vm.runInNewContext(source, {
-    Vue: { ...Vue, onMounted: fn => { mounted = fn; }, createApp: options => ({ mount() { state = options.setup(); } }) },
+    Vue: { ...Vue, onMounted: fn => { mounted = fn; }, createApp: options => ({ config: {}, mount() { state = options.setup(); } }) },
     localStorage, sessionStorage, window: { addEventListener() {}, removeEventListener() {}, location: { hash: '' } },
     history: { replaceState() {} },
-    fetch: async () => { throw Error('offline'); }, setTimeout: () => 0, console,
+    fetch: async () => { throw Error('offline'); }, setTimeout: () => 0, confirm: () => true, console,
     URL: { createObjectURL: () => 'blob:test-image', revokeObjectURL() {} },
     Image: class { naturalWidth = 480; naturalHeight = 240; set src(value) { Promise.resolve().then(() => this.onload()); } },
     document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
   });
 }
 // 履歴（pushState/popstate）を検証するための独立ブート
-function bootWithHistory(initialHash) {
-  const calls = [];
+function bootWithHistory(initialHash) {  const calls = [];
   const listeners = new Map();
   const location = { hash: initialHash || '' };
   const history = {
@@ -29,7 +28,7 @@ function bootWithHistory(initialHash) {
   };
   let localMounted, localState;
   vm.runInNewContext(source, {
-    Vue: { ...Vue, onMounted: fn => { localMounted = fn; }, createApp: options => ({ mount() { localState = options.setup(); } }) },
+    Vue: { ...Vue, onMounted: fn => { localMounted = fn; }, createApp: options => ({ config: {}, mount() { localState = options.setup(); } }) },
     localStorage: storage(), sessionStorage: storage(),
     window: {
       addEventListener(kind, fn) { listeners.set(kind, fn); },
@@ -37,12 +36,30 @@ function bootWithHistory(initialHash) {
       location
     },
     history,
-    fetch: async () => { throw Error('offline'); }, setTimeout: () => 0, console,
+    fetch: async () => { throw Error('offline'); }, setTimeout: () => 0, confirm: () => true, console,
     URL: { createObjectURL: () => 'blob:test-image', revokeObjectURL() {} },
     Image: class { naturalWidth = 480; naturalHeight = 240; set src(value) { Promise.resolve().then(() => this.onload()); } },
     document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
   });
   return { calls, listeners, location, state: () => localState, mounted: localMounted };
+}
+// Flask接続検出を検証するための独立ブート（fetchを差し替え可能）
+function bootWithFetch(fetchImpl) {
+  let localMounted, localState;
+  vm.runInNewContext(source, {
+    Vue: { ...Vue, onMounted: fn => { localMounted = fn; }, createApp: options => ({ config: {}, mount() { localState = options.setup(); } }) },
+    localStorage: storage(), sessionStorage: storage(),
+    window: {
+      addEventListener() {}, removeEventListener() {},
+      location: { hash: '', hostname: '127.0.0.1' }
+    },
+    history: { replaceState() {}, pushState() {}, back() {} },
+    fetch: fetchImpl, setTimeout: () => 0, confirm: () => true, console,
+    URL: { createObjectURL: () => 'blob:test-image', revokeObjectURL() {} },
+    Image: class { naturalWidth = 480; naturalHeight = 240; set src(value) { Promise.resolve().then(() => this.onload()); } },
+    document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
+  });
+  return { state: () => localState, mounted: localMounted };
 }
 (async () => {
   boot(); await mounted();
@@ -117,6 +134,30 @@ function bootWithHistory(initialHash) {
   assert.equal(state.boardPosts.value[0].likes.length, 1);
   await state.toggleBoardLike(state.boardPosts.value[0]);
   assert.equal(state.boardPosts.value[0].likes.length, 0);
+  // 三点メニュー: 投稿とチャットで排他的に開閉し、外側クリックで閉じる
+  state.togglePostMenu(post.id);
+  assert.equal(state.openPostMenu.value, post.id);
+  state.toggleChatMenu(123);
+  assert.equal(state.openPostMenu.value, null, 'チャットメニューを開くと投稿メニューは閉じる');
+  assert.equal(state.openChatMenu.value, 123);
+  state.toggleChatMenu(123);
+  assert.equal(state.openChatMenu.value, null, '同じボタンをもう一度押すと閉じる');
+  state.togglePostMenu(post.id);
+  state.closeOpenMenus();
+  assert.equal(state.openPostMenu.value, null, 'closeOpenMenus で閉じる');
+  // チャットの三点メニューからの削除（オフライン時はローカルから消える）
+  state.circleMessages.value = [{ id: 7, user_id: state.currentUser.value.id, content: '消す発言' }];
+  await state.confirmDeleteCircleMessage(state.circleMessages.value[0]);
+  assert.equal(state.openChatMenu.value, null, 'チャット削除時にメニューを閉じる');
+  assert.equal(state.circleMessages.value.length, 0);
+  // 三点メニューからの削除: 追加した投稿だけが消え、既存の投稿は残る
+  state.newBoardTitle.value = '削除テスト'; state.newBoardContent.value = '消える投稿';
+  await state.submitBoardPost();
+  const doomed = state.boardPosts.value[0];
+  await state.confirmDeleteBoardPost(doomed);
+  assert.equal(state.openPostMenu.value, null, '削除時にメニューを閉じる');
+  assert.ok(!state.boardPosts.value.some(p => p.id === doomed.id), '削除した投稿が一覧から消える');
+  assert.equal(state.boardPosts.value.length, 1, '他の投稿は残る');
   // アカウント管理: ログイン <-> アカウント作成モーダル切り替え
   assert.equal(state.showUserModal.value, false);
   assert.equal(state.showSignupModal.value, false);
@@ -220,5 +261,79 @@ function bootWithHistory(initialHash) {
   boot(); await mounted();
   assert.equal(state.myStickers.value.length, 1);
 
-  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image sizing, posts, likes, replies, persistence, failure recovery, history traversal, my stickers');
+  // ===== ログアウト後もアカウントは残り、再ログインできる =====
+  boot(); await mounted();
+  assert.equal(state.isFlaskOnline.value, false);
+  state.usersList.value = [
+    { id: 1, username: 'guest', display_name: 'ゲスト', circle_name: '未所属' },
+    { id: 5, username: 'yaya_moderate', display_name: 'wawa404', circle_name: '未所属' }
+  ];
+  state.loginUsername.value = 'yaya_moderate';
+  await state.loginByUsername();
+  assert.equal(state.currentUser.value.username, 'yaya_moderate');
+  await state.logout();
+  assert.equal(state.currentUser.value.username, 'guest');
+  assert.ok(state.usersList.value.some(u => u.username === 'yaya_moderate'),
+    'ログアウトしてもアカウント一覧から消えない');
+  state.loginUsername.value = 'yaya_moderate';
+  await state.loginByUsername();
+  assert.equal(state.currentUser.value.username, 'yaya_moderate', 'ログアウト後に再ログインできる');
+
+  // ===== 全角入力・ニックネームでもログインできる =====
+  state.loginUsername.value = 'ｙａｙａ＿ｍｏｄｅｒａｔｅ';
+  await state.loginByUsername();
+  assert.equal(state.currentUser.value.username, 'yaya_moderate', '全角入力でもログインできる');
+  await state.logout();
+  state.loginUsername.value = 'wawa404';   // 一覧に出ているニックネーム
+  await state.loginByUsername();
+  assert.equal(state.currentUser.value.username, 'yaya_moderate', 'ニックネームでもログインできる');
+
+  // ===== サーバー未接続でも保存済みアカウントを復元してログインできる =====
+  localStorage.setItem('quadtecho_users', JSON.stringify([
+    { id: 1, username: 'guest', display_name: 'ゲスト', circle_name: '未所属' },
+    { id: 9, username: 'saved_user', display_name: '保存ユーザー', circle_name: '未所属' }
+  ]));
+  boot(); await mounted();
+  assert.ok(state.usersList.value.some(u => u.username === 'saved_user'),
+    'オフラインでも保存済みアカウントが一覧に復元される');
+  state.loginUsername.value = 'saved_user';
+  await state.loginByUsername();
+  assert.equal(state.currentUser.value.username, 'saved_user', 'オフラインでもログインできる');
+
+  // ===== Flaskサーバーが後から起動しても自動で「Flask同期」へ切り替わる =====
+  const healthResponse = () => ({
+    ok: true,
+    clone() { return this; },
+    json: async () => ({ service: 'QuadTecho Flask API', status: 'healthy' })
+  });
+  const okFetch = async (url) => {
+    if (String(url).includes('/api/health')) return healthResponse();
+    throw new Error('offline');
+  };
+  const hf = bootWithFetch(okFetch);
+  await hf.mounted();
+  assert.equal(hf.state().isFlaskOnline.value, true, 'ヘルスチェック成功で Flask同期 になる');
+
+  // 未起動ならローカル保存のまま（何度呼んでも落ちない）
+  const offFetch = async () => { throw new Error('offline'); };
+  const hf2 = bootWithFetch(offFetch);
+  await hf2.mounted();
+  assert.equal(hf2.state().isFlaskOnline.value, false, '未起動ならローカル保存のまま');
+  assert.equal(await hf2.state().probeFlaskOnce(), false, '再検出しても未接続なら false');
+
+  // 途中でサーバーが起動したケースを再検出で拾える
+  let serverUp = false;
+  const flakyFetch = async (url) => {
+    if (!serverUp) throw new Error('offline');
+    if (String(url).includes('/api/health')) return healthResponse();
+    throw new Error('offline');
+  };
+  const hf3 = bootWithFetch(flakyFetch);
+  await hf3.mounted();
+  assert.equal(hf3.state().isFlaskOnline.value, false);
+  serverUp = true;
+  assert.equal(await hf3.state().probeFlaskOnce(), true, '再検出でサーバーを検知できる');
+  assert.equal(hf3.state().isFlaskOnline.value, true, '再検出後に Flask同期 へ切り替わる');
+
+  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image sizing, posts, likes, replies, persistence, failure recovery, history traversal, my stickers, login/logout, flask detection');
 })().catch(error => { console.error(error); process.exitCode = 1; });
