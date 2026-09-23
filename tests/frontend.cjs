@@ -17,6 +17,33 @@ function boot() {
     document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
   });
 }
+// 履歴（pushState/popstate）を検証するための独立ブート
+function bootWithHistory(initialHash) {
+  const calls = [];
+  const listeners = new Map();
+  const location = { hash: initialHash || '' };
+  const history = {
+    replaceState(state, _title, url) { calls.push({ type: 'replace', state }); if (url) location.hash = url; },
+    pushState(state, _title, url) { calls.push({ type: 'push', state }); if (url) location.hash = url; },
+    back() { calls.push({ type: 'back' }); }
+  };
+  let localMounted, localState;
+  vm.runInNewContext(source, {
+    Vue: { ...Vue, onMounted: fn => { localMounted = fn; }, createApp: options => ({ mount() { localState = options.setup(); } }) },
+    localStorage: storage(), sessionStorage: storage(),
+    window: {
+      addEventListener(kind, fn) { listeners.set(kind, fn); },
+      removeEventListener(kind) { listeners.delete(kind); },
+      location
+    },
+    history,
+    fetch: async () => { throw Error('offline'); }, setTimeout: () => 0, console,
+    URL: { createObjectURL: () => 'blob:test-image', revokeObjectURL() {} },
+    Image: class { naturalWidth = 480; naturalHeight = 240; set src(value) { Promise.resolve().then(() => this.onload()); } },
+    document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
+  });
+  return { calls, listeners, location, state: () => localState, mounted: localMounted };
+}
 (async () => {
   boot(); await mounted();
   state.currentTab.value = 'canvas';
@@ -127,5 +154,71 @@ function boot() {
   assert.equal(state.newBoardContent.value, '下書きは残す');
   assert.equal(state.boardPosts.value.length, 1);
   assert.equal(state.boardBusy.value, false);
-  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image sizing, posts, likes, replies, persistence, failure recovery');
+
+  // ===== 履歴トラバーサル（ブラウザの戻る/進む）=====
+  const h = bootWithHistory('');
+  await h.mounted();
+  const hs = h.state();
+  assert.ok(h.listeners.has('popstate'), 'popstate リスナーが登録される');
+  assert.equal(h.location.hash, '#home', '初期タブが履歴の基点として登録される');
+  assert.ok(h.calls.some(c => c.type === 'replace' && c.state.quadtecho === 'tab'), '基点は replaceState で登録');
+
+  // タブ移動で履歴に1件積む
+  hs.currentTab.value = 'list';
+  const tabPush = h.calls.filter(c => c.type === 'push' && c.state.quadtecho === 'tab').pop();
+  assert.ok(tabPush && tabPush.state.tab === 'list', 'タブ移動で pushState される');
+  assert.equal(h.location.hash, '#list', 'URLハッシュがタブに追従する');
+
+  // 戻る/進むでタブが復元される
+  h.location.hash = '#home';
+  h.listeners.get('popstate')({ state: { quadtecho: 'tab', tab: 'home' } });
+  assert.equal(hs.currentTab.value, 'home', 'popstate（戻る）で前のタブへ復元');
+  h.location.hash = '#list';
+  h.listeners.get('popstate')({ state: { quadtecho: 'tab', tab: 'list' } });
+  assert.equal(hs.currentTab.value, 'list', 'popstate（進む）で次のタブへ復元');
+
+  // モーダルを開くと履歴を積み、「戻る」でまず閉じる
+  hs.showUserModal.value = true;
+  await Vue.nextTick(); await Vue.nextTick();
+  assert.ok(h.calls.some(c => c.type === 'push' && c.state.quadtecho === 'overlay'), 'オーバーレイ表示で履歴を積む');
+  const hashWhileOpen = h.location.hash;
+  h.listeners.get('popstate')({ state: { quadtecho: 'tab', tab: 'list' } });
+  await Vue.nextTick(); await Vue.nextTick();
+  assert.equal(hs.showUserModal.value, false, '「戻る」でモーダルが閉じる');
+  assert.equal(hs.currentTab.value, 'list', '「戻る」でタブは変わらない');
+  assert.equal(h.location.hash, hashWhileOpen, 'モーダルを閉じてもURLは変わらない');
+
+  // UI操作で閉じたときは積んだ履歴を取り除く（余分な「戻る」を残さない）
+  const h2 = bootWithHistory('#list');
+  await h2.mounted();
+  const hs2 = h2.state();
+  hs2.showUserModal.value = true;
+  await Vue.nextTick(); await Vue.nextTick();
+  const backsBefore = h2.calls.filter(c => c.type === 'back').length;
+  hs2.showUserModal.value = false;
+  await Vue.nextTick(); await Vue.nextTick();
+  assert.ok(h2.calls.filter(c => c.type === 'back').length > backsBefore, 'UIで閉じたら history.back() で履歴を戻す');
+
+  // ===== 入手したシール（マイシール）を手帳で使える =====
+  const stickerIcon = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
+  assert.equal(state.myStickers.value.length, 0);
+  assert.equal(state.addMySticker({
+    name: '部活ロゴ', icon: stickerIcon, category: 'オリジナル', source: 'circle', source_id: 7 }), true);
+  assert.equal(state.myStickers.value.length, 1);
+  // 同じ画像は重複追加しない
+  assert.equal(state.addMySticker({ name: '部活ロゴ', icon: stickerIcon }), false);
+  assert.equal(state.myStickers.value.length, 1);
+  assert.equal(JSON.parse(localStorage.getItem('quadtecho_my_stickers')).length, 1);
+  // 入手したシールを手帳ページへ貼れる
+  const beforeStickerCount = state.items.value.length;
+  state.addMyStickerToTecho(state.myStickers.value[0]);
+  assert.equal(state.items.value.length, beforeStickerCount + 1);
+  const placedSticker = state.items.value.at(-1);
+  assert.equal(placedSticker.item_type, 'sticker');
+  assert.equal(placedSticker.image_url, stickerIcon);
+  // リロード後もマイシールが残る（手帳で使い続けられる）
+  boot(); await mounted();
+  assert.equal(state.myStickers.value.length, 1);
+
+  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image sizing, posts, likes, replies, persistence, failure recovery, history traversal, my stickers');
 })().catch(error => { console.error(error); process.exitCode = 1; });

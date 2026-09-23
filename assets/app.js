@@ -9,9 +9,27 @@
         const isFlaskOnline = ref(false);
 
         // ナビゲーションタブ: URLハッシュ (#canvas 等) または localStorage から復元
-        const hashTab = window.location.hash ? window.location.hash.replace('#', '') : null;
+        const VALID_TABS = ['home', 'list', 'canvas', 'board', 'circles', 'circle'];
+        // URLハッシュからタブとサークルIDを読み取る（#circle/3 のような専用ページ指定に対応）
+        const parseLocation = () => {
+          const raw = (window.location.hash || '').replace(/^#/, '');
+          const [name, arg] = raw.split('/');
+          if (!VALID_TABS.includes(name)) return { tab: null, circleId: null };
+          const circleId = (name === 'circle' && arg != null && arg !== '' && Number.isFinite(Number(arg)))
+            ? Number(arg)
+            : null;
+          return { tab: name, circleId };
+        };
+        const locationState = parseLocation();
+        // 現在のタブに対応するURLハッシュ（サークル専用ページはID付き）
+        const tabHash = (tab) => (tab === 'circle' && selectedCircleId.value != null)
+          ? `#circle/${selectedCircleId.value}`
+          : '#' + tab;
+        const hashTab = locationState.tab;
         const savedTab = hashTab || localStorage.getItem('quadtecho_tab') || sessionStorage.getItem('quadtecho_tab');
-        const currentTab = ref(['home', 'list', 'canvas', 'board'].includes(savedTab) ? savedTab : 'home');
+        const currentTab = ref(VALID_TABS.includes(savedTab) ? savedTab : 'home');
+        // ブラウザの戻る/進むで復元したときは履歴を二重に積まない
+        let isRestoringHistory = false;
         watch(currentTab, tab => {
           localStorage.setItem('quadtecho_tab', tab);
           sessionStorage.setItem('quadtecho_tab', tab);
@@ -19,8 +37,12 @@
           mobileMenuOpen.value = false;
           mobilePaletteOpen.value = false;
           try {
-            if (window.location.hash !== '#' + tab) {
-              history.replaceState(null, '', '#' + tab);
+            // 履歴に1件積み、戻る/進むで前後のタブへ移動できるようにする
+            if (!isRestoringHistory) {
+              const target = tabHash(tab);
+              if (window.location.hash !== target) {
+                history.pushState({ quadtecho: 'tab', tab }, '', target);
+              }
             }
           } catch (e) { }
         }, { flush: 'sync' });
@@ -37,10 +59,19 @@
         function toggleMobileMenu() {
           mobileMenuOpen.value = !mobileMenuOpen.value;
         }
+        // ドロワー表示中は背面スクロールを止める（モバイルのトップバー配下のずれ防止）
+        watch(mobileMenuOpen, open => {
+          try {
+            document.body.style.overflow = open ? 'hidden' : '';
+          } catch (_) { }
+        });
         function openMobileTab(tab) {
           if (tab === '__board') {
             mobileMenuOpen.value = false;
             switchToBoard();
+          } else if (tab === '__circles') {
+            mobileMenuOpen.value = false;
+            switchToCircles();
           } else {
             currentTab.value = tab;
             mobileMenuOpen.value = false;
@@ -160,10 +191,10 @@
           if (!currentUser.value || currentUser.value.username === 'guest') return usersList.value;
           return usersList.value.filter(u => u.id === currentUser.value.id || !isTestAccount(u));
         });
-        const newUserForm = ref({ username: '', display_name: '', circle_name: '' });
+        const newUserForm = ref({ username: '', display_name: '', circle_name: '', circle_id: null });
         const loginUsername = ref('');
         const showProfileModal = ref(false);
-        const profileForm = ref({ display_name: '', circle_name: '' });
+        const profileForm = ref({ display_name: '', circle_name: '', circle_id: null });
 
         // 手帳ページ管理状態
         const pages = ref([
@@ -688,6 +719,8 @@
         const showNewBoardModal = ref(false);
         const newBoardTitle = ref('');
         const newBoardContent = ref('');
+        // タグ・シールの追加エリアは既定で畳んでおく（投稿フォームを簡潔に保つ）
+        const showComposerOptions = ref(false);
 
         // ホーム用サマリー計算
         const totalItemCount = computed(() => {
@@ -1467,6 +1500,8 @@
           currentUser.value = user;
           localStorage.setItem('quadtecho_active_user', JSON.stringify(user));
           await loadPages(user.id);
+          fetchCircles();
+          fetchMyStickers();
           showUserModal.value = false;
           showSignupModal.value = false;
           triggerToast(`「${user.display_name}」の手帳に切り替えました`);
@@ -1511,12 +1546,18 @@
         async function logout() {
           if (imageBusy.value || isSwitchingPage.value) return;
           await saveCurrentPage(false);
+          const loggedOut = currentUser.value;
           try { localStorage.removeItem('quadtecho_active_user'); } catch (_) { }
+          if (loggedOut && loggedOut.username !== 'guest') {
+            usersList.value = usersList.value.filter(u => u.id !== loggedOut.id);
+            try { localStorage.setItem('quadtecho_users', JSON.stringify(usersList.value)); } catch (_) { }
+          }
           const guest = usersList.value.find(u => u.username === 'guest') || usersList.value[0] || null;
           if (guest) {
             currentUser.value = guest;
             await loadPages(guest.id);
           }
+          fetchCircles();
           loginUsername.value = '';
           showSignupModal.value = false;
           showUserModal.value = true;
@@ -1524,9 +1565,10 @@
         }
 
         function openSignupModal() {
-          newUserForm.value = { username: '', display_name: '', circle_name: '' };
+          newUserForm.value = { username: '', display_name: '', circle_name: '', circle_id: null };
           showUserModal.value = false;
           showSignupModal.value = true;
+          fetchCircles();
         }
 
         function backToLoginModal() {
@@ -1538,18 +1580,21 @@
         function openProfileModal() {
           profileForm.value = {
             display_name: currentUser.value?.display_name || '',
-            circle_name: currentUser.value?.circle_name || ''
+            circle_name: currentUser.value?.circle_name || '',
+            circle_id: currentUser.value?.circle_id ?? null
           };
           showUserModal.value = false;
           showSignupModal.value = false;
           showProfileModal.value = true;
+          fetchCircles();
         }
 
-        function applyProfileLocally(displayName, circleName) {
+        function applyProfileLocally(displayName, circleName, circleId = null) {
           const updated = {
             ...currentUser.value,
             display_name: displayName,
-            circle_name: circleName
+            circle_name: circleName,
+            circle_id: circleId
           };
           currentUser.value = updated;
           const idx = usersList.value.findIndex(u => u.id === updated.id);
@@ -1562,7 +1607,7 @@
 
         async function saveProfile() {
           const displayName = (profileForm.value.display_name || '').trim();
-          const circleName = (profileForm.value.circle_name || '').trim() || '未所属';
+          const circleId = profileForm.value.circle_id ?? null;
           if (!displayName) {
             triggerToast('ニックネームを入力してください', 'error');
             return;
@@ -1572,7 +1617,7 @@
               const res = await fetch(`${activeFlaskUrl}/api/users/${currentUser.value.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ display_name: displayName, circle_name: circleName })
+                body: JSON.stringify({ display_name: displayName, circle_id: circleId })
               });
               const data = await res.json();
               if (res.ok && data.success && data.user) {
@@ -1581,19 +1626,25 @@
                 if (idx >= 0) usersList.value[idx] = data.user;
                 try { localStorage.setItem('quadtecho_active_user', JSON.stringify(data.user)); } catch (_) { }
                 showProfileModal.value = false;
+                fetchCircles();
                 triggerToast('プロフィールを更新しました');
+                return;
+              }
+              if (data && data.error) {
+                triggerToast(data.error, 'error');
                 return;
               }
             } catch (_) { }
           }
           // サーバー未接続時やサーバー側に存在しないIDの場合はローカル更新
-          applyProfileLocally(displayName, circleName);
+          applyProfileLocally(displayName, circleNameById(circleId), circleId);
           showProfileModal.value = false;
           triggerToast('プロフィールを更新しました');
         }
 
         async function createNewUser() {
-          const { username, display_name, circle_name } = newUserForm.value;
+          const { username, display_name } = newUserForm.value;
+          const circleId = newUserForm.value.circle_id ?? null;
           if (!username.trim()) {
             triggerToast('ユーザーIDを入力してください', 'error');
             return;
@@ -1607,14 +1658,19 @@
                 body: JSON.stringify({
                   username: username.trim(),
                   display_name: display_name.trim() || username.trim(),
-                  circle_name: circle_name.trim() || '未所属'
+                  circle_id: circleId
                 })
               });
               const data = await res.json();
               if (data.success) {
                 usersList.value.push(data.user);
                 await selectUser(data.user);
-                newUserForm.value = { username: '', display_name: '', circle_name: '' };
+                newUserForm.value = { username: '', display_name: '', circle_name: '', circle_id: null };
+                fetchCircles();
+                return;
+              }
+              if (data && data.error) {
+                triggerToast(data.error, 'error');
                 return;
               }
             } catch (_) { }
@@ -1625,12 +1681,453 @@
             id: newId,
             username: username.trim(),
             display_name: display_name.trim() || username.trim(),
-            circle_name: circle_name.trim() || '未所属'
+            circle_id: circleId,
+            circle_name: circleNameById(circleId)
           };
           usersList.value.push(userObj);
           localStorage.setItem('quadtecho_users', JSON.stringify(usersList.value));
           await selectUser(userObj);
-          newUserForm.value = { username: '', display_name: '', circle_name: '' };
+          newUserForm.value = { username: '', display_name: '', circle_name: '', circle_id: null };
+        }
+
+        // ================= サークル（部活） =================
+        const circlesList = ref([]);
+        const circleMembers = ref([]);
+        const selectedCircleId = ref(null);
+        const circleLoading = ref(false);
+        const circleSearch = ref('');
+        const newCircleForm = ref({ name: '', description: '' });
+        const selectedCircle = computed(() =>
+          circlesList.value.find(c => c.id === selectedCircleId.value) || null);
+        const myCircle = computed(() => {
+          const cid = currentUser.value?.circle_id;
+          if (cid != null) return circlesList.value.find(c => c.id === cid) || null;
+          const nm = (currentUser.value?.circle_name || '').trim();
+          if (!nm || nm === '未所属') return null;
+          return circlesList.value.find(c => c.name === nm) || null;
+        });
+        const filteredCircles = computed(() => {
+          const q = (circleSearch.value || '').trim().toLowerCase();
+          if (!q) return circlesList.value;
+          return circlesList.value.filter(c =>
+            (c.name || '').toLowerCase().includes(q) ||
+            (c.description || '').toLowerCase().includes(q));
+        });
+        function circleNameById(id) {
+          if (id == null) return '未所属';
+          return circlesList.value.find(c => c.id === id)?.name
+            || currentUser.value?.circle_name || '未所属';
+        }
+        async function fetchCircles() {
+          if (!isFlaskOnline.value) return;
+          circleLoading.value = true;
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles?user_id=${currentUser.value?.id ?? ''}`);
+            const data = await res.json();
+            if (data.success && Array.isArray(data.circles)) {
+              circlesList.value = data.circles;
+              if (selectedCircleId.value != null
+                && !circlesList.value.some(c => c.id === selectedCircleId.value)) {
+                selectedCircleId.value = null;
+                circleMembers.value = [];
+              }
+            }
+          } catch (_) { }
+          finally { circleLoading.value = false; }
+        }
+        function switchToCircles() {
+          stopCircleChatPolling();
+          currentTab.value = 'circles';
+          fetchCircles();
+          if (selectedCircleId.value != null) fetchCircleStickers();
+        }
+        async function selectCircle(id) {
+          selectedCircleId.value = id;
+          circleMembers.value = [];
+          circleStickers.value = [];
+          circleMessages.value = [];
+          showCircleStickerForm.value = false;
+          if (!isFlaskOnline.value || id == null) return;
+          await fetchCircleStickers();
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles/${id}`);
+            const data = await res.json();
+            if (data.success && data.circle) {
+              const idx = circlesList.value.findIndex(c => c.id === id);
+              if (idx >= 0) {
+                circlesList.value[idx] = {
+                  ...circlesList.value[idx], member_count: data.circle.member_count
+                };
+              }
+              circleMembers.value = data.circle.members || [];
+            }
+          } catch (_) { }
+        }
+        function reflectCircleMembership(circle) {
+          if (!circle || !currentUser.value) return;
+          const updated = { ...currentUser.value, circle_id: circle.id, circle_name: circle.name };
+          currentUser.value = updated;
+          const idx = usersList.value.findIndex(u => u.id === updated.id);
+          if (idx >= 0) usersList.value[idx] = { ...usersList.value[idx], ...updated };
+          try { localStorage.setItem('quadtecho_active_user', JSON.stringify(updated)); } catch (_) { }
+        }
+        async function createCircle() {
+          const name = (newCircleForm.value.name || '').trim();
+          const description = (newCircleForm.value.description || '').trim();
+          if (!name) { triggerToast('サークル名を入力してください', 'error'); return; }
+          if (!isFlaskOnline.value) { triggerToast('サーバー接続時のみ立部できます', 'error'); return; }
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, description, founder_user_id: currentUser.value?.id })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              triggerToast((data && data.error) || '立部できませんでした', 'error');
+              return;
+            }
+            await fetchCircles();
+            if (data.circle) {
+              reflectCircleMembership(data.circle);
+              selectedCircleId.value = data.circle.id;
+              await selectCircle(data.circle.id);
+            }
+            newCircleForm.value = { name: '', description: '' };
+            triggerToast(`「${name}」を立部しました ⛺`);
+          } catch (_) { triggerToast('立部できませんでした', 'error'); }
+        }
+        async function joinCircle(id) {
+          if (!isFlaskOnline.value) { triggerToast('サーバー接続時のみ入部できます', 'error'); return; }
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles/${id}/join`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: currentUser.value?.id })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              triggerToast((data && data.error) || '入部できませんでした', 'error');
+              return;
+            }
+            await fetchCircles();
+            reflectCircleMembership(circlesList.value.find(c => c.id === id));
+            if (selectedCircleId.value === id) await selectCircle(id);
+            triggerToast(data.message || '入部しました ⛺');
+          } catch (_) { triggerToast('入部できませんでした', 'error'); }
+        }
+        async function leaveCircle(id) {
+          if (!isFlaskOnline.value) { triggerToast('サーバー接続時のみ退部できます', 'error'); return; }
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles/${id}/leave`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: currentUser.value?.id })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              triggerToast((data && data.error) || '退部できませんでした', 'error');
+              return;
+            }
+            await fetchCircles();
+            if (currentUser.value?.circle_id === id) {
+              const updated = { ...currentUser.value, circle_id: null, circle_name: '未所属' };
+              currentUser.value = updated;
+              const idx = usersList.value.findIndex(u => u.id === updated.id);
+              if (idx >= 0) usersList.value[idx] = { ...usersList.value[idx], ...updated };
+              try { localStorage.setItem('quadtecho_active_user', JSON.stringify(updated)); } catch (_) { }
+            }
+            if (selectedCircleId.value === id) await selectCircle(id);
+            triggerToast(data.message || '退部しました');
+          } catch (_) { triggerToast('退部できませんでした', 'error'); }
+        }
+        async function switchMyCircle(id) {
+          if (!currentUser.value) return;
+          const targetId = id ?? null;
+          if (isFlaskOnline.value && currentUser.value?.id != null) {
+            try {
+              const res = await fetch(`${activeFlaskUrl}/api/users/${currentUser.value.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  display_name: currentUser.value.display_name, circle_id: targetId
+                })
+              });
+              const data = await res.json();
+              if (res.ok && data.success && data.user) {
+                currentUser.value = data.user;
+                const idx = usersList.value.findIndex(u => u.id === data.user.id);
+                if (idx >= 0) usersList.value[idx] = data.user;
+                try { localStorage.setItem('quadtecho_active_user', JSON.stringify(data.user)); } catch (_) { }
+                await fetchCircles();
+                triggerToast(targetId == null
+                  ? '未所属に戻しました'
+                  : `所属を「${data.user.circle_name}」に切り替えました ⛺`);
+                return;
+              }
+              triggerToast((data && data.error) || '切り替えできませんでした', 'error');
+              return;
+            } catch (_) { }
+          }
+          const target = targetId == null ? null : circlesList.value.find(c => c.id === targetId);
+          const updated = {
+            ...currentUser.value,
+            circle_id: target ? target.id : null,
+            circle_name: target ? target.name : '未所属'
+          };
+          currentUser.value = updated;
+          try { localStorage.setItem('quadtecho_active_user', JSON.stringify(updated)); } catch (_) { }
+          triggerToast(target ? `所属を「${target.name}」に切り替えました ⛺` : '未所属に戻しました');
+        }
+
+        // ================= サークル配布シール（自作シールの配布・共有） =================
+        const circleStickers = ref([]);
+        const circleStickerLoading = ref(false);
+        const circleStickerBusy = ref(false);
+        const showCircleStickerForm = ref(false);
+        const newCircleStickerName = ref('');
+        const newCircleStickerImage = ref('');
+
+        // ================= サークル専用ページ（チャット） =================
+        const circleMessages = ref([]);
+        const circleChatLoading = ref(false);
+        const circleChatBusy = ref(false);
+        const circleChatError = ref('');
+        const newCircleMessage = ref('');
+        let circleChatTimer = null;
+
+        function circleMemberOf(circle) {
+          if (!circle || !currentUser.value) return false;
+          if (currentUser.value.circle_id != null && currentUser.value.circle_id === circle.id) return true;
+          return (circleMembers.value || []).some(m => m.id === currentUser.value.id);
+        }
+
+        async function fetchCircleMessages() {
+          if (!isFlaskOnline.value || selectedCircleId.value == null) return;
+          circleChatLoading.value = true;
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles/${selectedCircleId.value}/messages`);
+            const data = await res.json();
+            if (data.success && Array.isArray(data.messages)) {
+              circleMessages.value = data.messages;
+              circleChatError.value = '';
+            }
+          } catch (_) {
+            circleChatError.value = 'チャットを読み込めませんでした';
+          } finally { circleChatLoading.value = false; }
+        }
+
+        async function sendCircleMessage() {
+          if (circleChatBusy.value) return;
+          const content = (newCircleMessage.value || '').trim();
+          if (!content) return;
+          if (selectedCircleId.value == null) return;
+          if (!isFlaskOnline.value) { triggerToast('サーバー接続時のみ送信できます', 'error'); return; }
+          circleChatBusy.value = true;
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles/${selectedCircleId.value}/messages`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: currentUser.value?.id, content })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              triggerToast((data && data.error) || '送信できませんでした', 'error');
+              return;
+            }
+            if (data.chat_message) circleMessages.value = [...circleMessages.value, data.chat_message];
+            newCircleMessage.value = '';
+          } catch (_) { triggerToast('送信できませんでした', 'error'); }
+          finally { circleChatBusy.value = false; }
+        }
+
+        // 専用ページを開いている間だけチャットを定期更新する
+        function startCircleChatPolling() {
+          stopCircleChatPolling();
+          if (typeof setInterval !== 'function') return;
+          circleChatTimer = setInterval(() => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            if (currentTab.value !== 'circle' || overlayOpenCount.value > 0) return;
+            fetchCircleMessages();
+          }, 10000);
+        }
+
+        function stopCircleChatPolling() {
+          if (circleChatTimer != null && typeof clearInterval === 'function') {
+            clearInterval(circleChatTimer);
+          }
+          circleChatTimer = null;
+        }
+
+        // サークル専用ページに必要なデータ（メンバー・配布シール・チャット）を読み込む
+        async function loadCirclePageData() {
+          if (selectedCircleId.value == null) return;
+          await selectCircle(selectedCircleId.value);
+          fetchCircleMessages();
+        }
+
+        // サークルをクリック → 専用ページへ
+        async function openCirclePage(id) {
+          if (id == null) return;
+          selectedCircleId.value = id;
+          currentTab.value = 'circle';
+          await loadCirclePageData();
+          startCircleChatPolling();
+        }
+
+        function backToCircleList() {
+          stopCircleChatPolling();
+          currentTab.value = 'circles';
+        }
+
+        watch(currentTab, tab => {
+          if (tab !== 'circle') stopCircleChatPolling();
+        });
+
+        async function fetchCircleStickers() {
+          if (!isFlaskOnline.value || selectedCircleId.value == null) {
+            circleStickers.value = [];
+            return;
+          }
+          circleStickerLoading.value = true;
+          try {
+            const uid = currentUser.value?.id ?? '';
+            const res = await fetch(
+              `${activeFlaskUrl}/api/circles/${selectedCircleId.value}/stickers?user_id=${uid}`);
+            const data = await res.json();
+            if (data.success && Array.isArray(data.stickers)) circleStickers.value = data.stickers;
+          } catch (_) { }
+          finally { circleStickerLoading.value = false; }
+        }
+
+        function handleCircleStickerFile(event) {
+          const file = event.target.files && event.target.files[0];
+          event.target.value = '';
+          if (!file) return;
+          if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+            triggerToast('PNG・JPEG・WebP・GIFの10MB以下を選んでください', 'error');
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            newCircleStickerImage.value = reader.result;
+            if (!newCircleStickerName.value) {
+              newCircleStickerName.value = file.name.replace(/\.[^.]+$/, '') || 'オリジナルシール';
+            }
+            triggerToast('配布するシール画像をセットしました！');
+          };
+          reader.readAsDataURL(file);
+        }
+
+        // 手持ちのマイシールを配布フォームへ読み込む
+        function pickMyStickerForCircleShare(sticker) {
+          if (!sticker) return;
+          newCircleStickerImage.value = sticker.icon;
+          newCircleStickerName.value = sticker.name || '';
+          showCircleStickerForm.value = true;
+        }
+
+        function clearCircleStickerForm() {
+          newCircleStickerName.value = '';
+          newCircleStickerImage.value = '';
+        }
+
+        async function shareCircleSticker() {
+          if (circleStickerBusy.value) return;
+          if (selectedCircleId.value == null) { triggerToast('配布するサークルを選んでください', 'error'); return; }
+          const name = (newCircleStickerName.value || '').trim();
+          if (!name) { triggerToast('シール名を入力してください', 'error'); return; }
+          if (!newCircleStickerImage.value) { triggerToast('配布するシール画像を選んでください', 'error'); return; }
+          if (!isFlaskOnline.value) { triggerToast('サーバー接続時のみ配布できます', 'error'); return; }
+          circleStickerBusy.value = true;
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/circles/${selectedCircleId.value}/stickers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: currentUser.value?.id,
+                name,
+                image_url: newCircleStickerImage.value,
+                category: 'オリジナル'
+              })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              triggerToast((data && data.error) || '配布できませんでした', 'error');
+              return;
+            }
+            addMySticker({
+              name, icon: newCircleStickerImage.value, category: 'オリジナル',
+              source: 'circle', source_id: data.sticker?.id ?? null
+            });
+            clearCircleStickerForm();
+            showCircleStickerForm.value = false;
+            await fetchCircleStickers();
+            triggerToast(`「${name}」をサークルに配布しました 🎨`);
+          } catch (_) { triggerToast('配布できませんでした', 'error'); }
+          finally { circleStickerBusy.value = false; }
+        }
+
+        // 配布シールを入手してマイシール（手帳で使える）に追加
+        async function obtainCircleSticker(sticker) {
+          if (circleStickerBusy.value || !sticker) return;
+          if (!isFlaskOnline.value) { triggerToast('サーバー接続時のみ取得できます', 'error'); return; }
+          circleStickerBusy.value = true;
+          try {
+            const res = await fetch(
+              `${activeFlaskUrl}/api/circles/${sticker.circle_id}/stickers/${sticker.id}/obtain`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: currentUser.value?.id })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              triggerToast((data && data.error) || '取得できませんでした', 'error');
+              return;
+            }
+            addMySticker({
+              name: sticker.name, icon: sticker.image_url, category: sticker.category,
+              source: 'circle', source_id: sticker.id
+            });
+            const target = circleStickers.value.find(s => s.id === sticker.id);
+            if (target) {
+              target.obtained = true;
+              target.downloads_count = data.downloads_count;
+            }
+            triggerToast(data.message || 'マイシールに追加しました');
+          } catch (_) { triggerToast('取得できませんでした', 'error'); }
+          finally { circleStickerBusy.value = false; }
+        }
+
+        // 入手して、そのまま今の手帳ページへ貼る
+        async function useCircleSticker(sticker) {
+          if (!sticker) return;
+          if (!sticker.obtained) await obtainCircleSticker(sticker);
+          addMySticker({
+            name: sticker.name, icon: sticker.image_url, category: sticker.category,
+            source: 'circle', source_id: sticker.id
+          });
+          addMyStickerToTecho({ name: sticker.name, icon: sticker.image_url });
+          currentTab.value = 'canvas';
+        }
+
+        async function deleteCircleSticker(sticker) {
+          if (circleStickerBusy.value || !sticker) return;
+          if (!isFlaskOnline.value) return;
+          circleStickerBusy.value = true;
+          try {
+            const res = await fetch(
+              `${activeFlaskUrl}/api/circles/${sticker.circle_id}/stickers/${sticker.id}?user_id=${currentUser.value?.id}`,
+              { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              triggerToast((data && data.error) || '取り下げできませんでした', 'error');
+              return;
+            }
+            circleStickers.value = circleStickers.value.filter(s => s.id !== sticker.id);
+            triggerToast('シールの配布を取り下げました');
+          } catch (_) { triggerToast('取り下げできませんでした', 'error'); }
+          finally { circleStickerBusy.value = false; }
         }
 
         // ================= 掲示板 (SNSコミュニティ) =================
@@ -1689,6 +2186,67 @@
         }
         function persistMyStickers() {
           try { localStorage.setItem('quadtecho_my_stickers', JSON.stringify(myStickers.value)); } catch (_) { }
+        }
+
+        // ---- マイシール（入手したシール）をサーバーと同期 ----
+        // サークル配布・掲示板シェア・アップロードで入手したシールは、
+        // ローカル(localStorage)とサーバー(user_stickers)の両方に保存する。
+        async function fetchMyStickers() {
+          if (!isFlaskOnline.value || !currentUser.value?.id) return;
+          try {
+            const res = await fetch(`${activeFlaskUrl}/api/users/${currentUser.value.id}/stickers`);
+            const data = await res.json();
+            if (!data.success || !Array.isArray(data.stickers)) return;
+            const merged = data.stickers.map(s => ({
+              name: s.name, icon: s.image_url, category: s.category || 'オリジナル',
+              source: s.source || 'circle', source_id: s.source_id ?? null
+            }));
+            (myStickers.value || []).forEach(local => {
+              if (!merged.some(s => s.icon === local.icon)) merged.push(local);
+            });
+            myStickers.value = merged;
+            persistMyStickers();
+          } catch (_) { }
+        }
+
+        async function saveMyStickerToServer(sticker) {
+          if (!isFlaskOnline.value || !currentUser.value?.id || !sticker?.icon) return;
+          try {
+            await fetch(`${activeFlaskUrl}/api/users/${currentUser.value.id}/stickers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: sticker.name || 'オリジナルシール',
+                image_url: sticker.icon,
+                category: sticker.category || 'オリジナル',
+                source: sticker.source || 'upload',
+                source_id: sticker.source_id ?? null
+              })
+            });
+          } catch (_) { }
+        }
+
+        // マイシールへ追加（重複は追加しない）。追加されたら true。
+        function addMySticker(sticker) {
+          const icon = sticker && sticker.icon;
+          if (!icon) return false;
+          if ((myStickers.value || []).some(s => s.icon === icon)) return false;
+          myStickers.value = [{
+            name: (sticker.name || 'オリジナルシール').slice(0, 60),
+            icon,
+            category: sticker.category || 'オリジナル',
+            source: sticker.source || 'upload',
+            source_id: sticker.source_id ?? null
+          }, ...(myStickers.value || [])];
+          persistMyStickers();
+          saveMyStickerToServer(sticker);
+          return true;
+        }
+
+        // 入手したシールを今開いている手帳ページへ貼る
+        function addMyStickerToTecho(sticker) {
+          if (!sticker || !sticker.icon) return;
+          addPreset({ name: sticker.name || 'オリジナルシール', icon: sticker.icon });
         }
         function resolveBoardImage(url) {
           if (!url) return '';
@@ -1933,6 +2491,7 @@
             newBoardTitle.value = '';
             newBoardContent.value = '';
             selectedBoardSticker.value = null;
+            showComposerOptions.value = false;
             shareStickerName.value = '';
             shareStickerPreview.value = null;
             shareStickerFileDataUrl.value = null;
@@ -2007,14 +2566,13 @@
           if (!data || !(data.icon || data.image_url)) { triggerToast('シールデータが見つかりません', 'error'); return; }
           const icon = data.icon || data.image_url;
           const name = (data.name || 'オリジナルシール').slice(0, 40);
-          if ((myStickers.value || []).some(st => st.icon === icon)) {
-            triggerToast('このシールは追加済みです');
-            return;
-          }
-          myStickers.value.push({ name, icon, category: data.category || 'オリジナル', from_post: post.id });
-          persistMyStickers();
-          if (!presetStickers.some(st => st.icon === icon)) presetStickers.push({ name, icon });
-          triggerToast(`「${name}」をマイシールに追加しました！手帳で貼れます`);
+          const added = addMySticker({
+            name, icon, category: data.category || 'オリジナル',
+            source: 'board', source_id: post.id
+          });
+          triggerToast(added
+            ? `「${name}」をマイシールに追加しました！手帳で貼れます`
+            : 'このシールは追加済みです');
         }
         async function toggleReaction(post, reactionType) {
           if (boardBusy.value || boardLoading.value) return;
@@ -2071,8 +2629,88 @@
           finally { boardBusy.value = false; }
         }
 
+        // ================= 履歴トラバーサル（戻る/進む）=================
+        // タブ移動は pushState で履歴に積む。モーダル・ドロワーを開いたときも履歴を1件積み、
+        // 「戻る」でまずオーバーレイを閉じる（ページ離脱や意図しない遷移を防ぐ）。
+        let overlayEntryPushed = false;
+        let suppressOverlayHistory = false;
+
+        const overlayOpenCount = computed(() => [
+          mobileMenuOpen.value,
+          mobilePaletteOpen.value,
+          showUserModal.value,
+          showProfileModal.value,
+          showSignupModal.value,
+          showNewPageModal.value,
+          showAddSheetModal.value,
+          showNewFolderModal.value,
+          showRenameFolderModal.value,
+          showRenameModal.value,
+          showNewBoardModal.value
+        ].filter(Boolean).length);
+
+        function closeAllOverlays() {
+          mobileMenuOpen.value = false;
+          mobilePaletteOpen.value = false;
+          showUserModal.value = false;
+          showProfileModal.value = false;
+          showSignupModal.value = false;
+          showNewPageModal.value = false;
+          showAddSheetModal.value = false;
+          showNewFolderModal.value = false;
+          showRenameFolderModal.value = false;
+          showRenameModal.value = false;
+          showNewBoardModal.value = false;
+        }
+
+        // オーバーレイの開閉に合わせて履歴エントリを出し入れする
+        watch(overlayOpenCount, count => {
+          if (suppressOverlayHistory) return;
+          try {
+            if (count > 0 && !overlayEntryPushed) {
+              overlayEntryPushed = true;
+              history.pushState({ quadtecho: 'overlay' }, '', window.location.href);
+            } else if (count === 0 && overlayEntryPushed) {
+              // UI操作で閉じた場合は積んだ履歴を取り除く
+              overlayEntryPushed = false;
+              suppressOverlayHistory = true;
+              history.back();
+            }
+          } catch (_) { }
+        });
+
+        function handlePopState(event) {
+          // オーバーレイ表示中の「戻る」はページ遷移ではなく閉じる操作として扱う
+          if (overlayOpenCount.value > 0) {
+            suppressOverlayHistory = true;
+            overlayEntryPushed = false;
+            closeAllOverlays();
+            nextTick(() => { suppressOverlayHistory = false; });
+            return;
+          }
+          suppressOverlayHistory = false;
+          overlayEntryPushed = false;
+          // 「進む」で閉じ済みオーバーレイの履歴に着地したら、タブ履歴へ正規化して
+          // 何も表示されない空のエントリが残らないようにする
+          if (event && event.state && event.state.quadtecho === 'overlay') {
+            try {
+              history.replaceState({ quadtecho: 'tab', tab: currentTab.value }, '', tabHash(currentTab.value));
+            } catch (_) { }
+          }
+          const parsed = parseLocation();
+          if (parsed.circleId != null) selectedCircleId.value = parsed.circleId;
+          if (parsed.tab && parsed.tab !== currentTab.value) {
+            isRestoringHistory = true;
+            currentTab.value = parsed.tab;
+            nextTick(() => { isRestoringHistory = false; });
+          }
+          if (parsed.tab === 'circle') loadCirclePageData();
+        }
+
         // ================= 初期化 ＆ ポート自動探査 =================
         onMounted(async () => {
+          // 履歴トラバーサル（ブラウザの戻る/進む）を有効化
+          window.addEventListener('popstate', handlePopState);
           // タッチデバイスの判定フォールバック：CSSメディアクエリが効かない環境でも
           // html.is-mobile クラスでモバイルUIを強制する（幅・解像度に関係なく）
           const applyDeviceClass = () => {
@@ -2164,14 +2802,34 @@
             currentUser.value = usersList.value[0];
             try { localStorage.setItem('quadtecho_active_user', JSON.stringify(currentUser.value)); } catch (_) { }
           }
+          // サークル一覧を取得（復元後の currentUser で参加状態を正しく付ける）
+          fetchCircles();
           await loadPages(currentUser.value.id);
           if (topSheetId.value == null) topSheetId.value = currentPageId.value;
           fetchBoard();
+          fetchMyStickers();
 
           // キャンバスを直接開いた場合も、初期表示を整える
           if (currentTab.value === 'canvas') {
             fitInitialView();
           }
+
+          // サークル専用ページ（#circle/<id>）を直接開いた場合はデータを読み込む
+          if (currentTab.value === 'circle') {
+            if (selectedCircleId.value == null) selectedCircleId.value = locationState.circleId;
+            if (selectedCircleId.value != null) {
+              await loadCirclePageData();
+              startCircleChatPolling();
+            } else {
+              currentTab.value = 'circles';
+            }
+          }
+
+          // 現在のタブを履歴の基点として登録し、初回の「戻る」先を安定させる
+          // （サークル専用ページはIDを含めたURLに揃える）
+          try {
+            history.replaceState({ quadtecho: 'tab', tab: currentTab.value }, '', tabHash(currentTab.value));
+          } catch (_) { }
         });
 
         return {
@@ -2203,8 +2861,105 @@
           switchToBoard, submitBoardPost, boardSearch, boardFilter, boardSort, boardBusy, boardLoading, boardError,
           expandedPost, replyDrafts, boardFilters, filteredBoardPosts, boardTime, fetchBoard, toggleBoardLike, submitBoardComment,
           boardTopicTags, boardPresetStickers, selectedBoardSticker, insertTag, toggleBoardSticker, shareCurrentTecho, toggleReaction, confirmDeleteBoardPost,
-          boardShareMode, sharePageId, shareStickerName, shareStickerKey, shareStickerPreview, sharePagePreview, shareStickerChoices, setShareMode, pickShareSticker, handleShareStickerFile, resolveBoardImage, importSharedPage, importSharedSticker, myStickers,
+          boardShareMode, sharePageId, shareStickerName, shareStickerKey, shareStickerPreview, sharePagePreview, shareStickerChoices, setShareMode, pickShareSticker, handleShareStickerFile, resolveBoardImage, importSharedPage, importSharedSticker, myStickers, showComposerOptions,
+          addMySticker, addMyStickerToTecho, fetchMyStickers,
+          circlesList, circleMembers, selectedCircleId, selectedCircle, myCircle, filteredCircles, circleLoading, circleSearch, newCircleForm, circleNameById, fetchCircles, switchToCircles, selectCircle, createCircle, joinCircle, leaveCircle, switchMyCircle,
+          circleStickers, circleStickerLoading, circleStickerBusy, showCircleStickerForm, newCircleStickerName, newCircleStickerImage,
+          fetchCircleStickers, handleCircleStickerFile, pickMyStickerForCircleShare, clearCircleStickerForm, shareCircleSticker, obtainCircleSticker, useCircleSticker, deleteCircleSticker,
+          openCirclePage, backToCircleList, loadCirclePageData, circleMemberOf,
+          circleMessages, circleChatLoading, circleChatBusy, circleChatError, newCircleMessage,
+          fetchCircleMessages, sendCircleMessage,
           boardShareMode, sharePageId, shareStickerName, shareStickerKey, shareStickerPreview, sharePagePreview, shareStickerChoices, setShareMode, pickShareSticker, handleShareStickerFile, resolveBoardImage, importSharedPage, importSharedSticker, myStickers
         };
       }
     }).mount('#app');
+
+// ===== text-marquee（見切れ文字の自動スクロール。Tunedropの auto-marquee と同方式） =====
+// はみ出したテキストだけを左へ流す。画面外では停止し、モーション軽減設定では無効化する。
+// Node テスト (vm) などブラウザAPIが無い環境では何もしない。
+(() => {
+  if (typeof matchMedia !== 'function' || typeof document === 'undefined'
+    || typeof ResizeObserver === 'undefined' || typeof MutationObserver === 'undefined'
+    || typeof IntersectionObserver === 'undefined' || typeof requestAnimationFrame !== 'function') return;
+  const selector = [
+    '.user-pill-name', '.user-pill-circle',
+    '.book-title', '.memo-card-title',
+    '.goodnotes-tab .tab-title',
+    '.circle-card-head strong', '.home-circle-name',
+    '.folder-item-name', '.add-sheet-title',
+    '[data-auto-scroll]',
+  ].join(',');
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const tracked = new Set();
+  let pending = false;
+
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(refresh);
+  }
+
+  const resize = new ResizeObserver(schedule);
+  const visibility = new IntersectionObserver(entries => {
+    changes.disconnect();
+    for (const entry of entries) {
+      entry.target.classList.toggle('is-marquee-visible', entry.isIntersecting);
+    }
+    observeChanges();
+  });
+  const changes = new MutationObserver(schedule);
+  function observeChanges() {
+    changes.observe(document.body, {
+      subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ['class', 'style', 'hidden'],
+    });
+  }
+
+  function unwrap(element) {
+    const content = element.querySelector(':scope > .auto-marquee-text');
+    if (content) content.replaceWith(...content.childNodes);
+    element.classList.remove('auto-marquee');
+    element.style.removeProperty('--text-slide-distance');
+    element.style.removeProperty('--text-slide-duration');
+  }
+
+  function refresh() {
+    pending = false;
+    changes.disconnect();
+    for (const element of tracked) {
+      if (!element.isConnected) {
+        resize.unobserve(element);
+        visibility.unobserve(element);
+        tracked.delete(element);
+      }
+    }
+    for (const element of document.querySelectorAll(selector)) {
+      if (!tracked.has(element)) {
+        tracked.add(element);
+        resize.observe(element);
+        visibility.observe(element);
+      }
+      const enabled = !reducedMotion.matches;
+      if (!enabled) { unwrap(element); continue; }
+      if (!element.clientWidth || !element.getClientRects().length) continue;
+      let content = element.querySelector(':scope > .auto-marquee-text');
+      const distance = (content ? content.scrollWidth : element.scrollWidth) - element.clientWidth;
+      if (distance <= 2) { unwrap(element); continue; }
+      if (!content) {
+        content = document.createElement('span');
+        content.className = 'auto-marquee-text';
+        content.append(...element.childNodes);
+        element.append(content);
+      }
+      element.classList.add('auto-marquee');
+      element.style.setProperty('--text-slide-distance', `-${Math.ceil(distance)}px`);
+      // 約28px/sで左へ流し、末尾で一拍置いてから次ループへ
+      element.style.setProperty('--text-slide-duration', `${Math.max(3, distance / (28 * 0.7))}s`);
+    }
+    observeChanges();
+  }
+
+  reducedMotion.addEventListener('change', schedule);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+  schedule();
+})();

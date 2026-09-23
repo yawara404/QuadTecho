@@ -38,9 +38,11 @@
       height: 54px;
       background: var(--header-bg);
       color: #ffffff;
-      display: flex;
+      /* 3カラム構成にして、ナビゲーションを常に画面中央へ固定する */
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
       padding: 0 18px;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
       position: sticky;
@@ -53,6 +55,8 @@
       align-items: center;
       gap: 11px;
       flex-shrink: 0;
+      justify-self: start;
+      min-width: 0;
       padding: 5px 8px 5px 0;
       border-radius: 12px;
       color: inherit;
@@ -114,30 +118,32 @@
       }
     }
 
-    /* ナビゲーションタブ（画面中央配置 ＆ ボックス幅統一） */
+    /* ナビゲーションタブ（ブランドと右側コントロールの間で画面中央に固定） */
     .nav-tabs {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
       display: flex;
-      gap: 6px;
+      gap: 4px;
       background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       padding: 4px;
-      border-radius: 10px;
+      border-radius: 999px;
       z-index: 10;
+      justify-self: center;
+      min-width: 0;
+      max-width: 100%;
     }
 
     .nav-tab-btn {
       border: none;
       background: transparent;
       color: #dcdde1;
-      width: 116px;
-      /* 4タブ幅統一 */
-      height: 38px;
-      padding: 0 8px;
-      border-radius: 8px;
+      flex: 1 1 0;
+      /* 5タブで均等幅・はみ出し防止 */
+      min-width: 0;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
       cursor: pointer;
-      font-size: 12.5px;
+      font-size: 12px;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -145,7 +151,7 @@
       /* ボックス内中央揃え */
       gap: 5px;
       white-space: nowrap;
-      transition: all 0.2s;
+      transition: background 0.2s, color 0.2s, box-shadow 0.2s;
     }
 
     .nav-tab-btn:hover {
@@ -153,10 +159,15 @@
       color: #fff;
     }
 
+    .nav-tab-btn:focus-visible {
+      outline: 2px solid #e5b852;
+      outline-offset: 2px;
+    }
+
     .nav-tab-btn.active {
       background: #ffffff;
       color: var(--header-bg);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
     }
 
     /* ハンバーガーメニューボタン（モバイル用・既定は非表示） */
@@ -305,6 +316,9 @@
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-shrink: 0;
+      justify-self: end;
+      min-width: 0;
     }
 
     .server-badge {
@@ -350,6 +364,38 @@
 
     .user-pill:hover {
       background: rgba(255, 255, 255, 0.25);
+    }
+
+    .user-pill:active {
+      transform: scale(0.97);
+    }
+
+    .user-pill-avatar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #eaf2e6;
+      color: #245448;
+      font-size: 13px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .user-pill-name {
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-pill-circle {
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .btn {
@@ -433,6 +479,8 @@
       flex: 1;
       display: flex;
       position: relative;
+      min-width: 0;
+      min-height: 0;
     }
 
     /* ===================================================
@@ -1108,6 +1156,7 @@
       position: relative;
       width: 100%;
       flex: 1;
+      min-width: 0;
       min-height: 0;
       overflow: hidden;
       display: flex;
@@ -2187,6 +2236,7 @@
       width: 100%;
       max-width: 1060px;
       margin: 0 auto;
+      min-width: 0;
     }
 
     .community-heading {
@@ -2427,6 +2477,59 @@
       margin-top: 2px;
     }
 
+    /* タグ・シールの追加エリア（既定は折りたたみ） */
+    .composer-options-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      border: 1px dashed var(--notebook-border);
+      background: #faf7f0;
+      color: #6b6252;
+      border-radius: 10px;
+      padding: 9px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: left;
+      transition: background .15s, border-color .15s;
+    }
+
+    .composer-options-toggle:hover {
+      background: #f4eee2;
+      border-color: #d5cbba;
+    }
+
+    .composer-options-toggle>span:first-child {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .composer-options-badge {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      color: #795548;
+      border-radius: 12px;
+      padding: 1px 8px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .composer-options-caret {
+      color: #a89c88;
+      font-size: 10px;
+    }
+
+    .composer-options {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--notebook-border);
+      border-radius: 12px;
+      background: #fdfbf6;
+    }
+
     .tag-hint {
       font-size: 11px;
       color: #7a8c80;
@@ -2649,6 +2752,9 @@
       display: inline-block;
       font-size: 28px;
       margin: 8px 0 2px;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-all;
     }
 
     /* マルチリアクション＆アクションバー */
@@ -2851,8 +2957,9 @@
 
     /* --- QD1: share-mode tabs / mini techo preview / sticker share --- */
     .share-mode-tabs {
-      display: flex;
-      gap: 6px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px;
       background: #f3ecdd;
       border: 1px solid var(--notebook-border);
       border-radius: 12px;
@@ -2860,16 +2967,18 @@
     }
 
     .share-mode-tab {
+      min-width: 0;
       border: 0;
       background: transparent;
       font: inherit;
       font-size: 12px;
       font-weight: 700;
       color: #6f6250;
-      padding: 7px 12px;
+      padding: 8px 6px;
       border-radius: 9px;
       cursor: pointer;
       white-space: nowrap;
+      text-align: center;
     }
 
     .share-mode-tab.active {
@@ -2896,12 +3005,6 @@
       padding: 12px;
       display: grid;
       gap: 10px;
-    }
-
-    .share-panel-title {
-      font-size: 12px;
-      font-weight: 800;
-      color: #5a5347;
     }
 
     .share-hint {
@@ -3067,12 +3170,20 @@
 
     @media (max-width:760px) {
       .board-layout {
-        padding: 18px 12px 60px;
+        padding: 16px 12px 32px;
       }
 
+      /* グリッド/フレックスの子が中身の最小幅で押し広げられないようにする（横はみ出し防止） */
       .community-columns {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         gap: 14px;
+      }
+
+      .community-sidebar,
+      .community-feed,
+      .social-post,
+      .community-composer {
+        min-width: 0;
       }
 
       .community-sidebar {
@@ -3084,15 +3195,21 @@
         display: none;
       }
 
+      /* 絞り込み：横スクロールをやめて折り返し、全体を見渡せるようにする */
       .community-filters {
         display: flex;
+        flex-wrap: wrap;
         margin: 0;
-        overflow-x: auto;
+        gap: 6px;
+        overflow: visible;
       }
 
       .community-filters button {
-        white-space: nowrap;
-        padding: 8px 12px;
+        flex: 1 1 auto;
+        justify-content: center;
+        text-align: center;
+        white-space: normal;
+        padding: 9px 10px;
         font-size: 12px;
       }
 
@@ -3106,39 +3223,47 @@
 
       .social-post,
       .community-composer {
-        padding: 16px;
+        padding: 16px 14px;
         border-radius: 14px;
       }
 
+      /* リアクション：2列に整えて指で押しやすい大きさを確保し、はみ出しをなくす */
       .reaction-buttons-group {
         width: 100%;
-        justify-content: space-between;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 6px;
       }
 
       .reaction-pill-btn {
-        flex: 1;
+        flex: 1 1 calc(50% - 3px);
+        min-width: 0;
         justify-content: center;
-        padding: 4px 6px;
-        font-size: 11px;
+        padding: 9px 6px;
+        font-size: 12px;
         white-space: nowrap;
       }
 
-      /* シェアモード切替タブ：横スクロールで1行に保ち、溢れを防ぐ */
-      .share-mode-tabs {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch;
+      /* 返信スレッドは独立した1行のボタンにして押しやすくする */
+      .action-thread-btn {
+        width: 100%;
+        justify-content: center;
+        background: #f0f5ee;
+        padding: 10px 12px;
       }
 
-      .share-mode-tabs::-webkit-scrollbar {
-        display: none;
+      /* 投稿の種類：3等分のセグメントで横スクロールを出さない */
+      .share-mode-tabs {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 3px;
       }
 
       .share-mode-tab {
-        flex: 0 0 auto;
-        padding: 7px 10px;
-        font-size: 11px;
+        font-size: 10px;
+        padding: 9px 2px;
+        white-space: normal;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
       }
 
       /* 投稿フォームのヘッダー：折り返して溢れを防ぐ */
@@ -3150,6 +3275,11 @@
         flex: 1 1 100%;
         min-width: 0;
         font-size: 13px;
+      }
+
+      .composer-quick-share-btn {
+        width: 100%;
+        justify-content: center;
       }
 
       /* 見出し：タイトルと更新ボタンを折り返し可能に */
@@ -3166,6 +3296,7 @@
       .feed-toolbar {
         flex-wrap: wrap;
         gap: 8px;
+        margin: 16px 0 12px;
       }
 
       .feed-search {
@@ -3175,6 +3306,7 @@
 
       .feed-toolbar select {
         flex: 1 1 auto;
+        width: 100%;
         min-width: 0;
       }
 
@@ -3191,13 +3323,34 @@
       .post-header-meta p {
         flex-wrap: wrap;
       }
+
+      /* 引用した手帳カード・シールカードも横幅に収める */
+      .mini-techo-head {
+        flex-wrap: wrap;
+      }
+
+      .post-sticker-card {
+        align-items: flex-start;
+      }
+
+      .post-sticker-img {
+        width: 60px;
+        height: 60px;
+      }
+
+      .post-import-btn {
+        padding: 11px 12px;
+      }
     }
 
-    @media (max-width: 1120px) {
+    @media (max-width: 1240px) {
       .techo-header {
+        /* 狭い幅ではグリッド中央固定をやめ、折り返しレイアウトへ戻す */
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
         height: auto;
         min-height: 72px;
-        flex-wrap: wrap;
         gap: 10px;
         padding: 10px 16px;
       }
@@ -3207,6 +3360,7 @@
         transform: none;
         order: 3;
         width: 100%;
+        max-width: none;
         justify-content: center;
       }
 
@@ -3220,36 +3374,94 @@
     @media (max-width: 800px),
     (hover: none) and (pointer: coarse) {
       .techo-header {
-        padding: 10px 12px;
-        gap: 8px;
+        min-height: 56px;
+        width: 100%;
+        min-width: 0;
+        max-width: 100vw;
+        flex-wrap: nowrap;
+        align-items: center;
+        padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
+        padding-bottom: 6px;
+        padding-left: 10px;
+        padding-right: 10px;
+        gap: 6px;
+        overflow: visible;
+      }
+
+      .brand {
+        min-width: 0;
+        flex: 0 1 auto;
+        gap: 6px;
+        padding: 5px 0;
       }
 
       .brand-icon {
-        width: 38px;
-        height: 38px;
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+      }
+
+      .brand-wordmark {
+        min-width: 0;
       }
 
       .brand-title {
-        font-size: 18px;
+        font-size: 16px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
+      /* 800px以下ではサブコピーを隠して1行に収める */
       .brand-sub {
-        font-size: 9px;
-        letter-spacing: .5px;
+        display: none;
       }
 
       .header-controls {
+        flex: 1 1 auto;
+        min-width: 0;
         gap: 6px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
       }
 
       .header-controls .server-badge {
         display: none;
       }
 
+      /* モバイルではヘッダーの保存ボタンを隠す（ドロワー内の保存ボタンを使う） */
+      .header-controls .header-save-btn {
+        display: none;
+      }
+
       .header-controls .user-pill {
-        max-width: 145px;
+        min-width: 0;
+        max-width: 34vw;
+        padding: 5px 8px 5px 5px;
+        gap: 6px;
+        font-size: 12px;
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.4);
+      }
+
+      .header-controls .user-pill-avatar {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+
+      .header-controls .user-pill-name {
+        min-width: 0;
+        max-width: 18vw;
+        font-size: 12px;
         overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .header-controls .user-pill-circle {
+        display: none;
       }
 
       .techo-header .nav-tab-btn {
@@ -3266,6 +3478,9 @@
 
       .hamburger-btn {
         display: flex;
+        flex-shrink: 0;
+        width: 40px;
+        height: 40px;
       }
 
       .header-controls {
@@ -3274,18 +3489,79 @@
       }
     }
 
+    /* 幅480px以下の狭い画面：さらに詰めて320px幅でも1行に収める */
+    @media (max-width: 480px) {
+      .techo-header {
+        gap: 6px;
+        padding-left: 8px;
+        padding-right: 8px;
+      }
+
+      .brand-title {
+        font-size: 15px;
+      }
+
+      .brand-icon {
+        width: 30px;
+        height: 30px;
+      }
+
+      .header-controls .user-pill {
+        max-width: 32vw;
+      }
+
+      .header-controls .user-pill-name {
+        max-width: 14vw;
+      }
+    }
+
     /* JSタッチ判定フォールバック（タッチデバイスなら幅に関係なくモバイルUI） */
-    html.is-mobile .techo-header .nav-tabs {
+    html.is-mobile .techo-header {
+      min-height: 56px;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 6px;
+      overflow: visible;
+    }
+
+    html.is-mobile .brand {
+      min-width: 0;
+      flex: 0 1 auto;
+    }
+
+    html.is-mobile .brand-wordmark {
+      min-width: 0;
+    }
+
+    html.is-mobile .brand-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    html.is-mobile .brand-sub {
       display: none;
     }
 
-    html.is-mobile .hamburger-btn {
-      display: flex;
+    html.is-mobile .header-controls .header-save-btn {
+      display: none;
     }
 
-    html.is-mobile .header-controls {
-      flex: 1;
-      justify-content: flex-end;
+    html.is-mobile .header-controls .user-pill {
+      min-width: 0;
+      max-width: 34vw;
+    }
+
+    html.is-mobile .header-controls .user-pill-name {
+      min-width: 0;
+      max-width: 18vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    html.is-mobile .hamburger-btn {
+      flex-shrink: 0;
     }
 
     .sheet-plane {
@@ -4144,3 +4420,657 @@
       opacity: 1;
       pointer-events: none;
     }
+
+/* ===================================================
+   画面4: サークルページ ＆ サークル欄
+   =================================================== */
+.circles-dashboard {
+  flex: 1;
+  padding: 32px 40px 60px;
+  max-width: 1240px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.circle-columns {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 24px;
+  margin-top: 20px;
+  align-items: start;
+}
+
+.circle-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.circle-card {
+  background: #fff;
+  border: 2px solid #ebdcd0;
+  border-radius: 12px;
+  padding: 14px;
+  cursor: pointer;
+  transition: transform .12s, border-color .12s;
+}
+
+.circle-card:hover {
+  transform: translateY(-2px);
+}
+
+.circle-card.active {
+  border-color: #245448;
+}
+
+.circle-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.circle-member-badge {
+  font-size: 11px;
+  background: #eaf2e6;
+  color: #245448;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.circle-card-desc {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.circle-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.circle-card-open {
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #2e7d52;
+  text-align: right;
+}
+
+/* ===================================================
+   サークル専用ページ（チャット・シール配布）
+   =================================================== */
+.circle-page {
+  flex: 1;
+  padding: 24px 32px 60px;
+  max-width: 1160px;
+  margin: 0 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.circle-page-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #ffffff;
+  border: 1px solid #ebdcd0;
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 14px rgba(34, 49, 63, .05);
+}
+
+.circle-back-btn {
+  border: 1px solid #ebdcd0;
+  background: #faf8f3;
+  color: #5a6b62;
+  border-radius: 10px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.circle-back-btn:hover {
+  background: #f1ece1;
+  color: #2c3e50;
+}
+
+.circle-page-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.circle-page-title h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #2c3e50;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.circle-page-title p {
+  font-size: 13px;
+  color: #7f8c8d;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.circle-page-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.circle-page-note {
+  font-size: 11px;
+  color: #8395a7;
+}
+
+.circle-page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.circle-page-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+.circle-chat,
+.circle-members,
+.circle-page-stickers .circle-sticker-panel {
+  background: #ffffff;
+  border: 1px solid #ebdcd0;
+  border-radius: 14px;
+  min-width: 0;
+}
+
+.circle-chat {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+}
+
+.circle-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1ece1;
+}
+
+.circle-chat-head h3,
+.circle-members h3 {
+  font-size: 14px;
+  font-weight: 800;
+  color: #2c3e50;
+}
+
+.circle-chat-count {
+  font-size: 11px;
+  color: #8395a7;
+  font-weight: 700;
+}
+
+.circle-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 2px;
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.circle-chat-empty {
+  font-size: 12px;
+  color: #a4b0be;
+  text-align: center;
+  padding: 18px 4px;
+}
+
+.circle-chat-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.circle-chat-row.mine {
+  flex-direction: row-reverse;
+}
+
+.circle-chat-bubble {
+  background: #faf6ec;
+  border: 1px solid #ebdcd0;
+  border-radius: 14px;
+  padding: 8px 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.circle-chat-row.mine .circle-chat-bubble {
+  background: #eaf4ed;
+  border-color: #cfe3d6;
+}
+
+.circle-chat-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.circle-chat-meta strong {
+  font-size: 11.5px;
+  color: #1b3825;
+  overflow-wrap: anywhere;
+}
+
+.circle-chat-meta small {
+  font-size: 10px;
+  color: #8395a7;
+  white-space: nowrap;
+}
+
+.circle-chat-bubble p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #333;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.circle-chat-form {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  padding-top: 12px;
+  border-top: 1px dashed #e2dacd;
+}
+
+.circle-chat-form textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 13px;
+  border-radius: 10px;
+  padding: 9px 12px;
+  border: 1px solid #ebdcd0;
+  background: #fffdf7;
+}
+
+.circle-members {
+  padding: 14px 16px;
+}
+
+.circle-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.circle-member-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 7px 10px;
+  border: 1px solid #ebdcd0;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.circle-member-row span {
+  color: #8395a7;
+}
+
+.circle-page-stickers {
+  margin-top: 18px;
+}
+
+.circle-page-stickers .circle-sticker-panel {
+  padding: 14px 16px 16px;
+  border-top: 1px solid #ebdcd0;
+}
+
+.circle-page-stickers .circle-sticker-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+/* サークル配布シール */
+.circle-sticker-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed #e2dacd;
+}
+
+.circle-sticker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.circle-sticker-head h5 {
+  font-size: 13px;
+  font-weight: 800;
+  color: #2c3e50;
+}
+
+.circle-sticker-lead {
+  font-size: 11px;
+  color: #8395a7;
+  line-height: 1.7;
+  margin: 6px 0 10px;
+}
+
+.circle-sticker-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #faf8f3;
+  border: 1px solid #ebdcd0;
+  border-radius: 10px;
+}
+
+.circle-sticker-preview {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #ebdcd0;
+  border-radius: 10px;
+  padding: 4px;
+  justify-self: start;
+}
+
+.circle-sticker-mine-label {
+  font-size: 11px;
+  color: #7f8c8d;
+  margin-bottom: 6px;
+}
+
+.circle-sticker-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.circle-sticker-chip {
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  border-radius: 8px;
+  padding: 2px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.circle-sticker-chip img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  display: block;
+}
+
+.circle-sticker-chip:hover {
+  border-color: #245448;
+}
+
+.circle-sticker-empty {
+  font-size: 12px;
+  color: #a4b0be;
+  padding: 8px 2px;
+}
+
+.circle-sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.circle-sticker-card {
+  background: #fff;
+  border: 1px solid #ebdcd0;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.circle-sticker-card>img {
+  width: 100%;
+  height: 72px;
+  object-fit: contain;
+  background: #faf8f3;
+  border-radius: 8px;
+}
+
+.circle-sticker-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #2c3e50;
+  overflow-wrap: anywhere;
+}
+
+.circle-sticker-meta {
+  font-size: 10px;
+  color: #8395a7;
+  overflow-wrap: anywhere;
+}
+
+.circle-sticker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: auto;
+}
+
+/* ホームのサークル欄ストリップ */
+.home-circle-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #ebdcd0;
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+}
+
+.home-circle-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.home-circle-icon {
+  font-size: 26px;
+}
+
+.home-circle-label {
+  font-size: 11px;
+  color: #8395a7;
+  font-weight: 700;
+}
+
+.home-circle-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: #2c3e50;
+}
+
+.home-circle-count {
+  font-size: 11px;
+  background: #eaf2e6;
+  color: #245448;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+/* 掲示板サイドバーのサークル欄 */
+.community-circle-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #ebdcd0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.community-circle-box:hover {
+  border-color: #245448;
+}
+
+.community-circle-icon {
+  font-size: 22px;
+}
+
+.community-circle-text {
+  flex: 1;
+}
+
+.community-circle-label {
+  font-size: 10px;
+  color: #8395a7;
+  font-weight: 700;
+}
+
+.community-circle-text strong {
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+.community-circle-go {
+  color: #245448;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .circles-dashboard {
+    padding: 16px 14px 48px;
+  }
+
+  .circle-columns {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .circle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-circle-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* サークル専用ページ：1カラムに積む */
+  .circle-page {
+    padding: 16px 14px 48px;
+  }
+
+  .circle-page-header {
+    padding: 14px 16px;
+  }
+
+  .circle-page-columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .circle-page-actions {
+    width: 100%;
+  }
+
+  .circle-page-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .circle-chat-log,
+  .circle-member-list {
+    max-height: none;
+  }
+
+  .circle-page-stickers .circle-sticker-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+}
+
+/* ===================================================
+   見切れテキストの自動スクロール（マーキー）
+   ※Tunedropの auto-marquee と同方式。はみ出した文字だけ滑らかに左へ流れる。
+   =================================================== */
+.auto-marquee {
+  overflow: hidden !important;
+  text-overflow: clip !important;
+}
+
+.auto-marquee>.auto-marquee-text {
+  display: inline-block;
+  width: max-content;
+  max-width: none;
+  white-space: nowrap;
+  vertical-align: bottom;
+  animation: text-overflow-left-loop var(--text-slide-duration, 6s) linear infinite;
+  animation-play-state: paused;
+}
+
+.auto-marquee.is-marquee-visible>.auto-marquee-text {
+  animation-play-state: running;
+}
+
+.auto-marquee:active>.auto-marquee-text {
+  animation-play-state: paused;
+}
+
+@keyframes text-overflow-left-loop {
+
+  0%,
+  10% {
+    transform: translateX(0);
+  }
+
+  80%,
+  100% {
+    transform: translateX(var(--text-slide-distance, 0px));
+  }
+
+  /* 最後は巻き戻さず次ループの先頭へ直接戻る */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-marquee>.auto-marquee-text {
+    animation: none;
+  }
+}

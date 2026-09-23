@@ -30,7 +30,67 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             display_name TEXT NOT NULL,
             circle_name TEXT DEFAULT '未所属',
+            circle_id INTEGER REFERENCES circles(id) ON DELETE SET NULL,
             avatar_url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 1b. circles テーブル（サークル・部活マスタ）＋ circle_members（所属）
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS circles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            founder_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS circle_members (
+            circle_id INTEGER NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (circle_id, user_id)
+        )
+    """)
+
+    # 1c. サークルで配布する自作シール
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS circle_stickers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            circle_id INTEGER NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+            creator_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            image_url TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'オリジナル',
+            downloads_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # 1d. ユーザーが入手したシール（サークル配布・掲示板シェア・アップロード）
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_stickers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            image_url TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'オリジナル',
+            source TEXT NOT NULL DEFAULT 'circle',
+            source_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (user_id, image_url)
+        )
+    """)
+
+    # 1e. サークル専用ページのチャット
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS circle_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            circle_id INTEGER NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -200,6 +260,32 @@ def init_db():
             cursor.execute("UPDATE bulletin_posts SET content = REPLACE(content, 'キャンパス君', 'ゲスト')")
         except Exception:
             pass
+
+    # users.circle_id 拡張カラムの自動マイグレーション（既存DB向け）
+    _user_cols = {r[1] for r in cursor.execute("PRAGMA table_info(users)").fetchall()}
+    if "circle_id" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN circle_id INTEGER REFERENCES circles(id) ON DELETE SET NULL")
+
+    # 既存ユーザーの自由記入サークル名をサークル化して紐付ける
+    # （未所属・空欄・テスト名義は対象外。ゲストは未所属のまま）
+    for _uid, _uname, _cname in cursor.execute(
+            "SELECT id, username, circle_name FROM users WHERE circle_id IS NULL").fetchall():
+        _cname = (_cname or "").strip()
+        if not _cname or _cname == "未所属":
+            continue
+        _hay = f"{_uname or ''} {_cname}".lower()
+        if "test" in _hay or "テスト" in _hay:
+            continue
+        _row = cursor.execute("SELECT id FROM circles WHERE name = ?", (_cname,)).fetchone()
+        if _row is None:
+            cursor.execute(
+                "INSERT INTO circles (name, founder_user_id) VALUES (?, ?)", (_cname, _uid))
+            _cid = cursor.lastrowid
+        else:
+            _cid = _row[0]
+        cursor.execute("UPDATE users SET circle_id = ? WHERE id = ?", (_cid, _uid))
+        cursor.execute(
+            "INSERT OR IGNORE INTO circle_members (circle_id, user_id) VALUES (?, ?)", (_cid, _uid))
 
     conn.commit()
     conn.close()

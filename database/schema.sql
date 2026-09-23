@@ -14,13 +14,89 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) NOT NULL UNIQUE COMMENT '学籍ID/ログインアカウント名',
   display_name VARCHAR(100) NOT NULL COMMENT '表示名（ニックネーム）',
   circle_name VARCHAR(100) DEFAULT '未所属' COMMENT '所属サークル名',
+  circle_id INT NULL COMMENT '所属サークルID（circles.id）',
   avatar_url VARCHAR(255) NULL COMMENT 'アバター画像URL',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ユーザーマスタ';
 
--- 2. techo_items テーブル（手帳キャンバス上のアイテム）
--- ※画像バイナリは持たず、保存されたファイルURL(image_url)のみを保持
+-- 1b. circles テーブル（サークル・部活マスタ）＋ circle_members（所属）
+CREATE TABLE IF NOT EXISTS circles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(40) NOT NULL UNIQUE COMMENT 'サークル名',
+  description VARCHAR(500) NOT NULL DEFAULT '' COMMENT '紹介文',
+  founder_user_id INT NULL COMMENT '設立者ユーザーID',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_circle_founder
+    FOREIGN KEY (founder_user_id) REFERENCES users(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='サークルマスタ';
+
+CREATE TABLE IF NOT EXISTS circle_members (
+  circle_id INT NOT NULL COMMENT 'サークルID',
+  user_id INT NOT NULL COMMENT 'メンバーユーザーID',
+  joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (circle_id, user_id),
+  CONSTRAINT fk_member_circle
+    FOREIGN KEY (circle_id) REFERENCES circles(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_member_user
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='サークル所属';
+
+-- 1c. circle_stickers テーブル（サークルで配布する自作シール）
+CREATE TABLE IF NOT EXISTS circle_stickers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  circle_id INT NOT NULL COMMENT '配布先サークルID',
+  creator_user_id INT NOT NULL COMMENT '作成・配布したユーザーID',
+  name VARCHAR(60) NOT NULL COMMENT 'シール名',
+  image_url TEXT NOT NULL COMMENT 'シール画像（dataURL または アップロード先パス）',
+  category VARCHAR(40) NOT NULL DEFAULT 'オリジナル' COMMENT 'シール種別',
+  downloads_count INT NOT NULL DEFAULT 0 COMMENT '取得された回数',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_circle_sticker_circle (circle_id),
+  CONSTRAINT fk_circle_sticker_circle
+    FOREIGN KEY (circle_id) REFERENCES circles(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_circle_sticker_creator
+    FOREIGN KEY (creator_user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='サークル配布シール';
+
+-- 1d. user_stickers テーブル（ユーザーが入手したシール）
+CREATE TABLE IF NOT EXISTS user_stickers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL COMMENT '入手したユーザーID',
+  name VARCHAR(60) NOT NULL COMMENT 'シール名',
+  image_url TEXT NOT NULL COMMENT 'シール画像',
+  category VARCHAR(40) NOT NULL DEFAULT 'オリジナル' COMMENT 'シール種別',
+  source VARCHAR(20) NOT NULL DEFAULT 'circle' COMMENT '入手元(circle/board/upload)',
+  source_id INT NULL COMMENT '入手元ID（サークルIDや投稿ID）',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_user_sticker (user_id, image_url(255)),
+  CONSTRAINT fk_user_sticker_user
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ユーザー入手シール';
+
+-- 1e. circle_messages テーブル（サークル専用ページのチャット）
+CREATE TABLE IF NOT EXISTS circle_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  circle_id INT NOT NULL COMMENT 'チャットのあるサークルID',
+  user_id INT NOT NULL COMMENT '発言者ユーザーID',
+  content VARCHAR(500) NOT NULL COMMENT 'メッセージ本文',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_circle_message_circle (circle_id, id),
+  CONSTRAINT fk_circle_message_circle
+    FOREIGN KEY (circle_id) REFERENCES circles(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_circle_message_user
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='サークルチャット';
+
+-- 2. techo_items テーブル（手帳キャンバス上のアイテム）-- ※画像バイナリは持たず、保存されたファイルURL(image_url)のみを保持
 CREATE TABLE IF NOT EXISTS techo_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL COMMENT '所有ユーザーID',

@@ -18,7 +18,7 @@
   <!-- Vue 3 (CDN: Live Serverで直接動作) -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
-  <link rel="stylesheet" href="./assets/app.css" />
+  <link rel="stylesheet" href="./assets/app.css?v=20260923-nav" />
 </head>
 
 <body>
@@ -56,7 +56,10 @@
           <span>📖</span> 手帳を開く
         </button>
         <button :class="['nav-tab-btn', { active: currentTab === 'board' }]" @click="switchToBoard">
-          <span>📌</span> 共有掲示板
+          <span>📌</span> 掲示板
+        </button>
+        <button :class="['nav-tab-btn', { active: currentTab === 'circles' }]" @click="switchToCircles">
+          <span>⛺</span> サークル
         </button>
       </nav>
 
@@ -68,18 +71,19 @@
         </div>
 
         <div class="user-pill" @click="showUserModal = true">
-          <span>👤</span>
-          <span>{{ currentUser?.display_name || 'ゲスト' }}</span>
-          <span style="font-size: 10px; color: #dcdde1;">({{ currentUser?.circle_name || '学生' }})</span>
+          <span class="user-pill-avatar">{{ (currentUser?.display_name || 'ゲ').slice(0, 1) }}</span>
+          <span class="user-pill-name">{{ currentUser?.display_name || 'ゲスト' }}</span>
+          <span class="user-pill-circle" style="font-size: 10px; color: #dcdde1;">({{ currentUser?.circle_name || '学生'
+            }})</span>
           <span style="font-size: 9px;">▼</span>
         </div>
 
-        <button v-if="currentTab === 'canvas'" class="btn btn-save" @click="saveCurrentPage">
+        <button v-if="currentTab === 'canvas'" class="btn btn-save header-save-btn" @click="saveCurrentPage">
           <span>💾</span> ページ保存
         </button>
 
         <button class="hamburger-btn" :class="{ 'is-open': mobileMenuOpen }" @click="toggleMobileMenu"
-          :aria-label="mobileMenuOpen ? 'メニューを閉じる' : 'メニューを開く'" aria-expanded="false">
+          :aria-label="mobileMenuOpen ? 'メニューを閉じる' : 'メニューを開く'" :aria-expanded="mobileMenuOpen ? 'true' : 'false'">
           <span></span><span></span><span></span>
         </button>
       </div>
@@ -103,7 +107,10 @@
         <span>📖</span> 手帳を開く
       </button>
       <button :class="['mobile-nav-btn', { active: currentTab === 'board' }]" @click="openMobileTab('__board')">
-        <span>📌</span> 共有掲示板
+        <span>📌</span> 掲示板
+      </button>
+      <button :class="['mobile-nav-btn', { active: currentTab === 'circles' }]" @click="openMobileTab('__circles')">
+        <span>⛺</span> サークル
       </button>
 
       <button v-if="currentTab === 'canvas'" class="btn btn-save mobile-save-btn" @click="saveCurrentPage">
@@ -138,6 +145,20 @@
               <span class="stat-label">配置アイテム</span>
             </div>
           </div>
+        </div>
+
+        <!-- サークル欄（所属表示・サークルページへの入口） -->
+        <div class="home-circle-strip">
+          <div class="home-circle-info">
+            <span class="home-circle-icon">⛺</span>
+            <div>
+              <div class="home-circle-label">所属サークル</div>
+              <div class="home-circle-name">{{ myCircle ? myCircle.name : '未所属' }}</div>
+            </div>
+            <span v-if="myCircle" class="home-circle-count">{{ myCircle.member_count }}人</span>
+          </div>
+          <button class="btn btn-secondary" style="font-size: 12px; white-space: nowrap;"
+            @click="switchToCircles">サークルページへ →</button>
         </div>
 
         <!-- 手帳本棚（グリッド一覧） -->
@@ -522,6 +543,20 @@
                   <span>{{ s.name }}</span>
                 </button>
               </div>
+
+              <!-- サークル配布や掲示板シェアで入手したシール -->
+              <template v-if="myStickers.length">
+                <div style="font-size: 11px; color: #7f8c8d; margin-top: 10px;">
+                  マイシール（入手したシール {{ myStickers.length }}枚）:
+                </div>
+                <div class="preset-stickers-list">
+                  <button v-for="(s, i) in myStickers" :key="'my' + i" class="preset-sticker-item"
+                    :title="s.name" @click="addMyStickerToTecho(s)">
+                    <img :src="s.icon" :alt="s.name" />
+                    <span>{{ s.name }}</span>
+                  </button>
+                </div>
+              </template>
             </div>
           </aside>
 
@@ -707,6 +742,15 @@
                 <p>{{ currentUser?.circle_name || '学生' }}</p>
                 <span>{{ boardPosts.length }} 件の投稿</span>
               </div>
+              <div class="community-circle-box" @click="switchToCircles" role="button" tabindex="0"
+                @keydown.enter="switchToCircles" title="サークルページへ移動">
+                <span class="community-circle-icon">⛺</span>
+                <div class="community-circle-text">
+                  <div class="community-circle-label">所属サークル</div>
+                  <strong>{{ myCircle ? myCircle.name : '未所属' }}</strong>
+                </div>
+                <span class="community-circle-go">→</span>
+              </div>
               <nav class="community-filters" aria-label="投稿の絞り込み">
                 <button v-for="filter in boardFilters" :key="filter.id" :class="{ active: boardFilter === filter.id }"
                   :aria-pressed="boardFilter === filter.id" @click="boardFilter = filter.id">
@@ -728,24 +772,23 @@
                     <span class="community-avatar small">{{ (currentUser?.display_name || '客').slice(0, 1) }}</span>
                     <span>今日はどんなことをシェアする？</span>
                   </div>
-                  <button type="button" class="composer-quick-share-btn" @click="shareCurrentTecho"
-                    title="現在開いている手帳の内容を引用してシェア">
-                    <span>📖 今日の手帳をシェア</span>
-                  </button>
                 </div>
-                <div class="share-mode-tabs" role="tablist" aria-label="シェアモード切替">
+
+                <!-- 投稿の種類（コンパクトなセグメント） -->
+                <div class="share-mode-tabs" role="tablist" aria-label="投稿の種類">
                   <button type="button" role="tab" :class="['share-mode-tab', { active: boardShareMode === 'talk' }]"
-                    @click="setShareMode('talk')">💬 つぶやき・話題</button>
+                    @click="setShareMode('talk')">💬 つぶやき</button>
                   <button type="button" role="tab"
                     :class="['share-mode-tab', { active: boardShareMode === 'techo_page' }]"
-                    @click="setShareMode('techo_page')">📖 手帳ページをシェア</button>
+                    @click="setShareMode('techo_page')">📖 手帳ページ</button>
                   <button type="button" role="tab" :class="['share-mode-tab', { active: boardShareMode === 'sticker' }]"
-                    @click="setShareMode('sticker')">🎨 シールをシェア</button>
+                    @click="setShareMode('sticker')">🎨 シール</button>
                 </div>
+
+                <!-- 手帳ページをシェアするときだけ表示 -->
                 <div v-if="boardShareMode === 'techo_page'" class="share-panel">
-                  <div class="share-panel-title">📖 共有する手帳ページを選ぶ</div>
                   <select v-model="sharePageId" class="composer-select" aria-label="共有する手帳ページ">
-                    <option :value="null" disabled>手帳ページを選択してください</option>
+                    <option :value="null" disabled>共有する手帳ページを選択</option>
                     <option v-for="pg in pages" :key="pg.id" :value="pg.id">P{{ pg.page_number || '?' }}：{{ pg.title }}
                     </option>
                   </select>
@@ -762,10 +805,14 @@
                         loading="lazy" />
                     </div>
                   </div>
-                  <div v-else class="share-hint">手帳ページを選ぶとプレビューが表示されます。</div>
+                  <button type="button" class="composer-quick-share-btn" @click="shareCurrentTecho"
+                    title="今開いている手帳の内容を引用して入力します">
+                    📖 今開いている手帳を引用
+                  </button>
                 </div>
+
+                <!-- シールをシェアするときだけ表示 -->
                 <div v-if="boardShareMode === 'sticker'" class="share-panel">
-                  <div class="share-panel-title">🎨 共有するオリジナルシールを選ぶ・作る</div>
                   <input v-model="shareStickerName" class="form-input" maxlength="40" placeholder="シール名（例：カフェ勉強シール）"
                     aria-label="シール名" />
                   <div class="composer-sticker-row" style="border-top:0; padding-top:0;">
@@ -789,33 +836,41 @@
                     </div>
                   </div>
                 </div>
+
                 <input v-model="newBoardTitle" class="form-input" maxlength="100" aria-label="投稿タイトル"
-                  placeholder="話題のタイトル（例: 今週の予定、ゼミの相談、おすすめカフェなど）" required />
+                  placeholder="タイトル" required />
                 <textarea v-model="newBoardContent" class="form-input" maxlength="2000" rows="3" aria-label="投稿本文"
                   placeholder="近況、相談、手帳のアイデアなど、気軽に書いてみよう。" required></textarea>
 
-                <!-- タグクイック選択 -->
-                <div class="composer-tags-bar">
-                  <span class="tag-hint">🏷️ タグ:</span>
-                  <button type="button" v-for="tag in boardTopicTags" :key="tag" class="tag-chip-btn"
-                    @click="insertTag(tag)">
-                    {{ tag }}
-                  </button>
-                </div>
+                <!-- タグ・シールは畳んでおき、必要なときだけ開く -->
+                <button type="button" class="composer-options-toggle"
+                  :aria-expanded="showComposerOptions ? 'true' : 'false'" @click="showComposerOptions = !showComposerOptions">
+                  <span>＋ タグ・シールを追加</span>
+                  <span v-if="selectedBoardSticker" class="composer-options-badge">✨ {{ selectedBoardSticker }}</span>
+                  <span class="composer-options-caret">{{ showComposerOptions ? '▲' : '▼' }}</span>
+                </button>
+                <div v-show="showComposerOptions" class="composer-options">
+                  <div class="composer-tags-bar">
+                    <span class="tag-hint">🏷️ タグ:</span>
+                    <button type="button" v-for="tag in boardTopicTags" :key="tag" class="tag-chip-btn"
+                      @click="insertTag(tag)">
+                      {{ tag }}
+                    </button>
+                  </div>
 
-                <!-- シール添付ピッカー -->
-                <div class="composer-sticker-row">
-                  <span class="tag-hint">✨ シール:</span>
-                  <button type="button" v-for="st in boardPresetStickers" :key="st.emoji"
-                    :class="['sticker-chip-btn', { selected: selectedBoardSticker === st.emoji }]"
-                    @click="toggleBoardSticker(st.emoji)" :title="st.label">
-                    {{ st.emoji }}
-                  </button>
-                  <span v-if="selectedBoardSticker" class="selected-sticker-badge">
-                    添付中: {{ selectedBoardSticker }}
-                    <button type="button" class="sticker-remove-btn" @click="selectedBoardSticker = null"
-                      title="シール添付を取り消す">×</button>
-                  </span>
+                  <div class="composer-sticker-row">
+                    <span class="tag-hint">✨ シール:</span>
+                    <button type="button" v-for="st in boardPresetStickers" :key="st.emoji"
+                      :class="['sticker-chip-btn', { selected: selectedBoardSticker === st.emoji }]"
+                      @click="toggleBoardSticker(st.emoji)" :title="st.label">
+                      {{ st.emoji }}
+                    </button>
+                    <span v-if="selectedBoardSticker" class="selected-sticker-badge">
+                      添付中: {{ selectedBoardSticker }}
+                      <button type="button" class="sticker-remove-btn" @click="selectedBoardSticker = null"
+                        title="シール添付を取り消す">×</button>
+                    </span>
+                  </div>
                 </div>
 
                 <div class="composer-footer">
@@ -973,6 +1028,242 @@
           </div>
         </div>
       </div>
+
+      <!-- ==============================================
+           画面4: サークルページ（一覧・立部・所属切替）
+           ============================================== -->
+      <div v-show="currentTab === 'circles'" class="circles-dashboard">
+        <div class="list-header-banner">
+          <div class="list-header-title-group">
+            <h2><span>⛺</span> サークル・部活</h2>
+            <p>気になるサークルに入部したり、新しく立部（設立）できます。所属はプロフィールにも反映されます。</p>
+          </div>
+
+          <div class="user-sync-status-card">
+            <div class="user-sync-info">
+              <div class="user-sync-name">⛺ {{ myCircle ? myCircle.name : '未所属' }}</div>
+              <div class="user-sync-circle">{{ myCircle ? myCircle.member_count + ' 人のメンバー' : 'サークルに入部してみよう'
+                }}</div>
+            </div>
+            <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;"
+              @click="fetchCircles">↻ 更新</button>
+          </div>
+        </div>
+
+        <div class="circle-columns">
+          <!-- 左：サークル一覧 ＆ 立部フォーム -->
+          <section class="circle-list-pane" aria-label="サークル一覧">
+            <div class="techo-list-toolbar">
+              <div class="search-box-wrap">
+                <span class="search-icon-pos">🔍</span>
+                <input v-model="circleSearch" placeholder="サークル名・紹介文で検索..." class="search-input-field" />
+              </div>
+            </div>
+
+            <div v-if="circleLoading" style="color: #a4b0be; font-size: 13px; padding: 12px 4px;">読み込み中…</div>
+            <div v-else-if="filteredCircles.length === 0" class="empty-note-hint">
+              まだサークルがありません。下のフォームから立部できます！</div>
+            <div v-else class="circle-grid">
+              <div v-for="c in filteredCircles" :key="c.id"
+                :class="['circle-card', { active: selectedCircleId === c.id }]" @click="openCirclePage(c.id)">
+                <div class="circle-card-head">
+                  <strong>⛺ {{ c.name }}</strong>
+                  <span class="circle-member-badge">{{ c.member_count }}人</span>
+                </div>
+                <p class="circle-card-desc">{{ c.description || '紹介文はまだありません' }}</p>
+                <div class="circle-card-actions" @click.stop>
+                  <span v-if="currentUser?.circle_id === c.id" class="active-editing-pill">
+                    <span>●</span> 所属中
+                  </span>
+                  <button v-else class="btn-open-techo-primary" @click="joinCircle(c.id)">
+                    <span>入部する</span>
+                  </button>
+                </div>
+                <div class="circle-card-open">チャット・シール配布を見る →</div>
+              </div>
+            </div>
+
+            <div class="home-panel-box" style="margin-top: 16px;">
+              <h4 style="font-size: 15px; font-weight: 800; margin-bottom: 12px; color: #2c3e50;">🚩 新しく立部する</h4>
+              <div class="form-group">
+                <label>サークル名:</label>
+                <input v-model="newCircleForm.name" maxlength="40" placeholder="例: ボカロ部" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>紹介文:</label>
+                <textarea v-model="newCircleForm.description" maxlength="500" rows="2"
+                  placeholder="例: 週1で集まって曲を作っています" class="form-input"></textarea>
+              </div>
+              <button class="btn btn-save btn-full" @click="createCircle">立部する（作成者も自動入部）</button>
+            </div>
+          </section>
+
+          <!-- 右：あなたの所属 -->
+          <aside class="circle-detail-pane" aria-label="所属">
+            <div class="home-panel-box">
+              <h4 style="font-size: 15px; font-weight: 800; margin-bottom: 12px; color: #2c3e50;">👤 あなたの所属</h4>
+              <select :value="currentUser?.circle_id ?? null"
+                @change="switchMyCircle($event.target.value === '' ? null : Number($event.target.value))"
+                class="form-input" aria-label="所属サークル切り替え">
+                <option :value="null">未所属</option>
+                <option v-for="c in circlesList" :key="c.id" :value="c.id">⛺ {{ c.name }}</option>
+              </select>
+              <p style="font-size: 11px; color: #8395a7; margin-top: 8px;">切り替えるとプロフィールの所属にも反映されます。</p>
+            </div>
+
+            <div class="home-panel-box" style="margin-top: 16px;">
+              <h4 style="font-size: 15px; font-weight: 800; margin-bottom: 8px; color: #2c3e50;">💬 サークル専用ページ</h4>
+              <p style="font-size: 12px; color: #7f8c8d; line-height: 1.8;">
+                サークルをクリックすると専用ページが開きます。メンバー同士のチャットと、自作シールの配布・受け取りができます。
+              </p>
+              <button v-if="myCircle" class="btn btn-save btn-full" style="margin-top: 10px;"
+                @click="openCirclePage(myCircle.id)">⛺ {{ myCircle.name }} を開く</button>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ==============================================
+           画面4b: サークル専用ページ（チャット・シール配布）
+           ============================================== -->
+      <div v-show="currentTab === 'circle'" class="circle-page">
+        <div v-if="!selectedCircle" class="home-panel-box">
+          <div style="font-size: 13px; color: #a4b0be;">サークルを読み込んでいます…</div>
+        </div>
+
+        <template v-else>
+          <!-- 専用ページのヘッダー -->
+          <header class="circle-page-header">
+            <button class="circle-back-btn" @click="backToCircleList">← サークル一覧へ</button>
+            <div class="circle-page-title">
+              <h2>⛺ {{ selectedCircle.name }}</h2>
+              <p>{{ selectedCircle.description || '紹介文はまだありません' }}</p>
+              <div class="circle-page-meta">
+                <span class="circle-member-badge">{{ selectedCircle.member_count }}人</span>
+                <span v-if="circleMemberOf(selectedCircle)" class="active-editing-pill"><span>●</span> 所属中</span>
+                <span v-else class="circle-page-note">入部するとチャットに参加できます</span>
+              </div>
+            </div>
+            <div class="circle-page-actions">
+              <button v-if="circleMemberOf(selectedCircle)" class="btn btn-secondary" style="font-size: 12px;"
+                @click="leaveCircle(selectedCircle.id)">退部する</button>
+              <button v-else class="btn btn-save" style="font-size: 12px;"
+                @click="joinCircle(selectedCircle.id)">入部する</button>
+              <button class="btn btn-secondary" style="font-size: 12px;" @click="loadCirclePageData">↻ 更新</button>
+            </div>
+          </header>
+
+          <div class="circle-page-columns">
+            <!-- チャット -->
+            <section class="circle-chat" aria-label="サークルチャット">
+              <div class="circle-chat-head">
+                <h3>💬 サークルチャット</h3>
+                <span class="circle-chat-count">{{ circleMessages.length }} 件</span>
+              </div>
+
+              <div class="circle-chat-log" aria-live="polite">
+                <div v-if="circleChatLoading && !circleMessages.length" class="circle-chat-empty">読み込み中…</div>
+                <div v-else-if="!circleMessages.length" class="circle-chat-empty">
+                  まだ発言がありません。最初のひとことを送ってみましょう！</div>
+                <div v-for="m in circleMessages" :key="m.id"
+                  :class="['circle-chat-row', { mine: m.user_id === currentUser?.id }]">
+                  <span class="community-avatar small">{{ (m.author_name || '客').slice(0, 1) }}</span>
+                  <div class="circle-chat-bubble">
+                    <div class="circle-chat-meta">
+                      <strong>{{ m.author_name }}</strong>
+                      <small>{{ boardTime(m) }}</small>
+                    </div>
+                    <p>{{ m.content }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <p v-if="circleChatError" class="community-error" role="alert">{{ circleChatError }}</p>
+
+              <form class="circle-chat-form" @submit.prevent="sendCircleMessage">
+                <textarea v-model="newCircleMessage" class="form-input" maxlength="500" rows="2"
+                  :placeholder="circleMemberOf(selectedCircle) ? 'メッセージを入力（500文字以内）' : '入部するとチャットに参加できます'"
+                  :disabled="!circleMemberOf(selectedCircle)" aria-label="メッセージ"></textarea>
+                <button class="btn btn-save"
+                  :disabled="circleChatBusy || !circleMemberOf(selectedCircle) || !newCircleMessage.trim()">
+                  {{ circleChatBusy ? '送信中…' : '送信' }}
+                </button>
+              </form>
+            </section>
+
+            <!-- メンバー -->
+            <aside class="circle-members" aria-label="メンバー">
+              <h3>👥 メンバー {{ selectedCircle.member_count }}人</h3>
+              <div v-if="circleMembers.length === 0" class="circle-sticker-empty">メンバー情報を読み込めませんでした。</div>
+              <div v-else class="circle-member-list">
+                <div v-for="m in circleMembers" :key="m.id" class="circle-member-row">
+                  <strong>{{ m.display_name }}</strong>
+                  <span>@{{ m.username }}</span>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <!-- シール配布 -->
+          <section class="circle-page-stickers">
+            <div class="circle-sticker-panel">
+              <div class="circle-sticker-head">
+                <h5>🎨 シール配布</h5>
+                <button class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px;"
+                  @click="showCircleStickerForm = !showCircleStickerForm">
+                  {{ showCircleStickerForm ? '閉じる' : '＋ 配布する' }}
+                </button>
+              </div>
+              <p class="circle-sticker-lead">自作シールをサークルに配布できます。もらったシールは手帳に貼れます。</p>
+
+              <div v-if="showCircleStickerForm" class="circle-sticker-form">
+                <input v-model="newCircleStickerName" class="form-input" maxlength="60" placeholder="シール名（例：部活ロゴ）"
+                  aria-label="配布するシール名" />
+                <label class="upload-trigger">
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none;"
+                    @change="handleCircleStickerFile" />
+                  <span>📷 シール画像を選ぶ</span>
+                </label>
+                <img v-if="newCircleStickerImage" :src="newCircleStickerImage" class="circle-sticker-preview"
+                  alt="配布するシールのプレビュー" />
+                <button class="btn btn-save btn-full" :disabled="circleStickerBusy" @click="shareCircleSticker">
+                  {{ circleStickerBusy ? '配布中…' : 'このサークルに配布する' }}
+                </button>
+                <div v-if="myStickers.length" class="circle-sticker-mine">
+                  <div class="circle-sticker-mine-label">マイシールから選ぶ:</div>
+                  <div class="circle-sticker-chip-row">
+                    <button v-for="(s, i) in myStickers" :key="'pick' + i" class="circle-sticker-chip"
+                      :title="s.name" @click="pickMyStickerForCircleShare(s)">
+                      <img :src="s.icon" :alt="s.name" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="circleStickerLoading" class="circle-sticker-empty">読み込み中…</div>
+              <div v-else-if="!circleStickers.length" class="circle-sticker-empty">
+                まだ配布シールがありません。最初の1枚を配布してみましょう！</div>
+              <div v-else class="circle-sticker-grid">
+                <div v-for="s in circleStickers" :key="s.id" class="circle-sticker-card">
+                  <img :src="resolveBoardImage(s.image_url)" :alt="s.name" loading="lazy" />
+                  <div class="circle-sticker-name">{{ s.name }}</div>
+                  <div class="circle-sticker-meta">{{ s.creator_name }} · 取得 {{ s.downloads_count }}</div>
+                  <div class="circle-sticker-actions">
+                    <button class="btn btn-save" style="font-size: 11px; padding: 4px 8px;"
+                      :disabled="circleStickerBusy || s.obtained" @click="obtainCircleSticker(s)">
+                      {{ s.obtained ? '取得済み' : 'もらう' }}
+                    </button>
+                    <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;"
+                      :disabled="circleStickerBusy" @click="useCircleSticker(s)">手帳で使う</button>
+                    <button v-if="s.creator_user_id === currentUser?.id" class="ctrl-btn"
+                      style="color: #e74c3c;" title="配布を取り下げる" @click="deleteCircleSticker(s)">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </template>
+      </div>
     </main>
 
     <!-- モーダル1: ユーザー切り替え・新規登録 -->
@@ -1026,8 +1317,12 @@
           <input v-model="profileForm.display_name" maxlength="40" placeholder="例: たろう" class="form-input" />
         </div>
         <div class="form-group">
-          <label>所属・グループ:</label>
-          <input v-model="profileForm.circle_name" maxlength="40" placeholder="例: 写真サークル、2組" class="form-input" />
+          <label>所属サークル（切り替え可）:</label>
+          <select v-model="profileForm.circle_id" class="form-input">
+            <option :value="null">未所属</option>
+            <option v-for="c in circlesList" :key="c.id" :value="c.id">⛺ {{ c.name }}（{{ c.member_count ?? 0
+              }}人）</option>
+          </select>
         </div>
         <button class="btn btn-save btn-full" @click="saveProfile">保存する</button>
         <div class="modal-actions" style="justify-content: space-between; margin-top: 14px;">
@@ -1050,8 +1345,12 @@
           <input v-model="newUserForm.display_name" placeholder="例: 山田太郎" class="form-input" />
         </div>
         <div class="form-group">
-          <label>所属・グループ:</label>
-          <input v-model="newUserForm.circle_name" placeholder="例: 写真サークル、2組" class="form-input" />
+          <label>所属サークル:</label>
+          <select v-model="newUserForm.circle_id" class="form-input">
+            <option :value="null">未所属</option>
+            <option v-for="c in circlesList" :key="c.id" :value="c.id">⛺ {{ c.name }}（{{ c.member_count ?? 0
+              }}人）</option>
+          </select>
         </div>
         <button class="btn btn-save btn-full" @click="createNewUser">アカウント作成＆ログイン</button>
         <div class="modal-actions" style="justify-content: space-between; margin-top: 14px;">
@@ -1173,7 +1472,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260922-modal"></script>
+  <script src="./assets/app.js?v=20260922-marquee"></script>
 </body>
 
 </html>

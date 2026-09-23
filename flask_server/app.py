@@ -59,12 +59,39 @@ def allowed_file(filename: str) -> bool:
 def get_users():
     """登録ユーザー一覧取得（簡単切り替え用）"""
     conn = get_db_connection()
-    users = conn.execute("SELECT id, username, display_name, circle_name, created_at FROM users ORDER BY id ASC").fetchall()
+    users = conn.execute("SELECT id, username, display_name, circle_name, circle_id, created_at FROM users ORDER BY id ASC").fetchall()
     conn.close()
     return jsonify({
         "success": True,
         "users": [dict(u) for u in users]
     })
+
+def _link_user_to_circle(cursor, user_id, circle_id):
+    """所属サークルを設定し、メンバー登録も行う。circle_id=None は未所属。"""
+    if circle_id is None:
+        cursor.execute("UPDATE users SET circle_id = NULL, circle_name = '未所属' WHERE id = ?", (user_id,))
+        return {"id": None, "name": "未所属"}
+    circle = cursor.execute("SELECT id, name FROM circles WHERE id = ?", (circle_id,)).fetchone()
+    if not circle:
+        raise ValueError("指定のサークルが見つかりません")
+    cursor.execute("UPDATE users SET circle_id = ?, circle_name = ? WHERE id = ?",
+                   (circle["id"], circle["name"], user_id))
+    cursor.execute("INSERT OR IGNORE INTO circle_members (circle_id, user_id) VALUES (?, ?)",
+                   (circle["id"], user_id))
+    return {"id": circle["id"], "name": circle["name"]}
+
+def _resolve_circle_name(cursor, user_id, circle_id, circle_name):
+    """circle_id 優先で所属を解決する。レガシー自由記入は既存サークルと一致すれば紐付ける。"""
+    if circle_id is not None:
+        return _link_user_to_circle(cursor, user_id, circle_id)
+    name = (circle_name or "").strip()
+    if not name or name == "未所属":
+        return _link_user_to_circle(cursor, user_id, None)
+    found = cursor.execute("SELECT id FROM circles WHERE name = ?", (name,)).fetchone()
+    if found:
+        return _link_user_to_circle(cursor, user_id, found["id"])
+    cursor.execute("UPDATE users SET circle_id = NULL, circle_name = ? WHERE id = ?", (name, user_id))
+    return {"id": None, "name": name}
 
 @app.route("/api/users/login", methods=["POST"])
 def user_login():
@@ -73,12 +100,23 @@ def user_login():
     username = (data.get("username") or "").strip().lower()
     display_name = (data.get("display_name") or "").strip()
     circle_name = (data.get("circle_name") or "未所属").strip()
+    circle_id = data.get("circle_id")
 
     if not username:
         return jsonify({"success": False, "error": "ユーザー名を入力してください"}), 400
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    if circle_id is not None:
+        try:
+            circle_id = int(circle_id)
+        except (TypeError, ValueError):
+            conn.close()
+            return jsonify({"success": False, "error": "指定のサークルが見つかりません"}), 400
+        if not cursor.execute("SELECT id FROM circles WHERE id = ?", (circle_id,)).fetchone():
+            conn.close()
+            return jsonify({"success": False, "error": "指定のサークルが見つかりません"}), 400
 
     user = cursor.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
     if user:
@@ -99,6 +137,9 @@ def user_login():
             VALUES (?, ?, ?)
         """, (user_id, "表紙・はじめのページ", 1))
 
+        # 所属サークルを反映（選択式。未指定なら未所属）
+        _resolve_circle_name(cursor, user_id, circle_id, circle_name)
+
         conn.commit()
         user = cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         user_dict = dict(user)
@@ -112,9 +153,16 @@ def update_user(user_id):
     data = request.get_json() or {}
     display_name = (data.get("display_name") or "").strip()
     circle_name = (data.get("circle_name") or "").strip() or "未所属"
+    has_circle_id = "circle_id" in data
+    circle_id = data.get("circle_id")
 
     if not display_name:
         return jsonify({"success": False, "error": "ニックネームを入力してください"}), 400
+    if has_circle_id and circle_id is not None:
+        try:
+            circle_id = int(circle_id)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "指定のサークルが見つかりません"}), 400
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -123,13 +171,416 @@ def update_user(user_id):
         conn.close()
         return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
     cursor.execute(
-        "UPDATE users SET display_name = ?, circle_name = ? WHERE id = ?",
-        (display_name, circle_name, user_id),
+        "UPDATE users SET display_name = ? WHERE id = ?",
+        (display_name, user_id),
     )
+    try:
+        if has_circle_id:
+            _resolve_circle_name(cursor, user_id, circle_id, circle_name)
+        else:
+            _resolve_circle_name(cursor, user_id, None, circle_name)
+    except ValueError as e:
+        conn.rollback()
+        conn.close()
+        return jsonify({"success": False, "error": str(e)}), 400
     conn.commit()
     user = cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
     return jsonify({"success": True, "user": dict(user)})
+
+# ==========================================================
+# 1b. サークル（部活）管理 API
+# ==========================================================
+
+def _circle_with_count(conn, circle_id):
+    row = conn.execute("""
+        SELECT c.id, c.name, c.description, c.founder_user_id, c.created_at,
+               COUNT(m.user_id) AS member_count
+        FROM circles c LEFT JOIN circle_members m ON m.circle_id = c.id
+        WHERE c.id = ? GROUP BY c.id
+    """, (circle_id,)).fetchone()
+    return dict(row) if row else None
+
+@app.route("/api/circles", methods=["GET"])
+def get_circles():
+    """サークル一覧（メンバー数つき。?user_id= で参加状態も返す）"""
+    user_id = request.args.get("user_id", type=int)
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("""
+            SELECT c.id, c.name, c.description, c.founder_user_id, c.created_at,
+                   COUNT(m.user_id) AS member_count
+            FROM circles c LEFT JOIN circle_members m ON m.circle_id = c.id
+            GROUP BY c.id ORDER BY c.created_at ASC, c.id ASC
+        """).fetchall()
+        joined = set()
+        if user_id:
+            joined = {r[0] for r in conn.execute(
+                "SELECT circle_id FROM circle_members WHERE user_id = ?", (user_id,))}
+        return jsonify({"success": True, "circles": [
+            {**dict(r), "joined": (r["id"] in joined)} for r in rows]})
+    finally:
+        conn.close()
+
+@app.route("/api/circles", methods=["POST"])
+def create_circle():
+    """立部（サークル新規作成。作成者は自動で入部）"""
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    description = (data.get("description") or "").strip()
+    founder_user_id = data.get("founder_user_id")
+    if not name:
+        return jsonify({"success": False, "error": "サークル名を入力してください"}), 400
+    if len(name) > 40:
+        return jsonify({"success": False, "error": "サークル名は40文字以内で入力してください"}), 400
+    if len(description) > 500:
+        return jsonify({"success": False, "error": "紹介文は500文字以内で入力してください"}), 400
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if cursor.execute("SELECT id FROM circles WHERE name = ?", (name,)).fetchone():
+            return jsonify({"success": False, "error": "そのサークル名は既に使われています"}), 400
+        founder = None
+        if founder_user_id is not None:
+            founder = cursor.execute("SELECT id FROM users WHERE id = ?", (founder_user_id,)).fetchone()
+            if not founder:
+                return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+        cursor.execute("INSERT INTO circles (name, description, founder_user_id) VALUES (?, ?, ?)",
+                       (name, description, founder_user_id if founder else None))
+        circle_id = cursor.lastrowid
+        if founder:
+            cursor.execute("INSERT OR IGNORE INTO circle_members (circle_id, user_id) VALUES (?, ?)",
+                           (circle_id, founder_user_id))
+            cursor.execute("UPDATE users SET circle_id = ?, circle_name = ? WHERE id = ?",
+                           (circle_id, name, founder_user_id))
+        conn.commit()
+        return jsonify({"success": True, "circle": _circle_with_count(conn, circle_id)}), 201
+    finally:
+        conn.close()
+
+@app.route("/api/circles/<int:circle_id>", methods=["GET"])
+def get_circle(circle_id):
+    """サークル詳細＋メンバー一覧"""
+    conn = get_db_connection()
+    try:
+        circle = _circle_with_count(conn, circle_id)
+        if not circle:
+            return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
+        members = conn.execute("""
+            SELECT u.id, u.username, u.display_name, u.circle_name, m.joined_at
+            FROM circle_members m JOIN users u ON u.id = m.user_id
+            WHERE m.circle_id = ? ORDER BY m.joined_at ASC
+        """, (circle_id,)).fetchall()
+        circle["members"] = [dict(m) for m in members]
+        return jsonify({"success": True, "circle": circle})
+    finally:
+        conn.close()
+
+@app.route("/api/circles/<int:circle_id>/join", methods=["POST"])
+def join_circle(circle_id):
+    """入部（所属サークルも切り替える）"""
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        circle = cursor.execute("SELECT id, name FROM circles WHERE id = ?", (circle_id,)).fetchone()
+        if not circle:
+            return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
+        if not cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone():
+            return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+        cursor.execute("INSERT OR IGNORE INTO circle_members (circle_id, user_id) VALUES (?, ?)",
+                       (circle_id, user_id))
+        cursor.execute("UPDATE users SET circle_id = ?, circle_name = ? WHERE id = ?",
+                       (circle_id, circle["name"], user_id))
+        conn.commit()
+        return jsonify({"success": True, "message": f"「{circle['name']}」に入部しました"})
+    finally:
+        conn.close()
+
+@app.route("/api/circles/<int:circle_id>/leave", methods=["POST"])
+def leave_circle(circle_id):
+    """退部（所属がそのサークルなら未所属に戻す。サークル自体は残る）"""
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        circle = cursor.execute("SELECT id, name FROM circles WHERE id = ?", (circle_id,)).fetchone()
+        if not circle:
+            return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
+        if not cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone():
+            return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+        cursor.execute("DELETE FROM circle_members WHERE circle_id = ? AND user_id = ?", (circle_id, user_id))
+        cursor.execute("UPDATE users SET circle_id = NULL, circle_name = '未所属' WHERE id = ? AND circle_id = ?",
+                       (user_id, circle_id))
+        conn.commit()
+        return jsonify({"success": True, "message": f"「{circle['name']}」を退部しました"})
+    finally:
+        conn.close()
+
+# ==========================================================
+# 1e. サークル配布シール API（自作シールの配布・共有）
+# ==========================================================
+
+# dataURL を想定した画像サイズ上限（約400KB）
+MAX_STICKER_IMAGE_LEN = 400_000
+
+_STICKER_SELECT = """
+    SELECT s.id, s.circle_id, s.creator_user_id, s.name, s.image_url, s.category,
+           s.downloads_count, s.created_at, u.display_name AS creator_name
+    FROM circle_stickers s JOIN users u ON u.id = s.creator_user_id
+"""
+
+
+def _validate_sticker_input(data):
+    """配布シールの入力を検証して (name, image_url, category) を返す。不正なら (None, error)"""
+    name = (data.get("name") or "").strip()
+    image_url = (data.get("image_url") or "").strip()
+    category = (data.get("category") or "オリジナル").strip() or "オリジナル"
+    if not name:
+        return None, "シール名を入力してください"
+    if len(name) > 60:
+        return None, "シール名は60文字以内で入力してください"
+    if not image_url:
+        return None, "シール画像を選んでください"
+    if len(image_url) > MAX_STICKER_IMAGE_LEN:
+        return None, "シール画像が大きすぎます"
+    return (name, image_url, category), None
+
+
+@app.route("/api/circles/<int:circle_id>/stickers", methods=["GET"])
+def get_circle_stickers(circle_id):
+    """サークルで配布中のシール一覧（?user_id= で取得済みフラグを付ける）"""
+    user_id = request.args.get("user_id", type=int)
+    conn = get_db_connection()
+    try:
+        if not conn.execute("SELECT id FROM circles WHERE id = ?", (circle_id,)).fetchone():
+            return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
+        rows = conn.execute(_STICKER_SELECT + """
+            WHERE s.circle_id = ? ORDER BY s.created_at DESC, s.id DESC
+        """, (circle_id,)).fetchall()
+        obtained = set()
+        if user_id:
+            obtained = {r[0] for r in conn.execute(
+                "SELECT source_id FROM user_stickers WHERE user_id = ? AND source = 'circle'",
+                (user_id,)).fetchall()}
+        return jsonify({"success": True, "stickers": [
+            {**dict(r), "obtained": (r["id"] in obtained)} for r in rows]})
+    finally:
+        conn.close()
+
+
+@app.route("/api/circles/<int:circle_id>/stickers", methods=["POST"])
+def create_circle_sticker(circle_id):
+    """自作シールをサークルへ配布（参加メンバーのみ）"""
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    parsed, error = _validate_sticker_input(data)
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    name, image_url, category = parsed
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if not cursor.execute("SELECT id FROM circles WHERE id = ?", (circle_id,)).fetchone():
+            return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
+        if not cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone():
+            return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+        if not cursor.execute("SELECT 1 FROM circle_members WHERE circle_id = ? AND user_id = ?",
+                              (circle_id, user_id)).fetchone():
+            return jsonify({"success": False, "error": "サークルに参加すると配布できます"}), 403
+        cursor.execute("""
+            INSERT INTO circle_stickers (circle_id, creator_user_id, name, image_url, category)
+            VALUES (?, ?, ?, ?, ?)
+        """, (circle_id, user_id, name, image_url, category))
+        sticker_id = cursor.lastrowid
+        # 配布した本人もすぐ使えるようマイシールへ入れておく
+        cursor.execute("""
+            INSERT OR IGNORE INTO user_stickers (user_id, name, image_url, category, source, source_id)
+            VALUES (?, ?, ?, ?, 'circle', ?)
+        """, (user_id, name, image_url, category, sticker_id))
+        conn.commit()
+        row = cursor.execute(_STICKER_SELECT + " WHERE s.id = ?", (sticker_id,)).fetchone()
+        return jsonify({"success": True, "sticker": {**dict(row), "obtained": True}}), 201
+    finally:
+        conn.close()
+
+
+@app.route("/api/circles/<int:circle_id>/stickers/<int:sticker_id>", methods=["DELETE"])
+def delete_circle_sticker(circle_id, sticker_id):
+    """配布したシールを取り下げる（配布者のみ）"""
+    body = request.get_json(silent=True) or {}
+    user_id = request.args.get("user_id", type=int) or body.get("user_id")
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        row = cursor.execute(
+            "SELECT id, creator_user_id FROM circle_stickers WHERE id = ? AND circle_id = ?",
+            (sticker_id, circle_id)).fetchone()
+        if not row:
+            return jsonify({"success": False, "error": "シールが見つかりません"}), 404
+        if user_id is None or int(user_id) != int(row["creator_user_id"]):
+            return jsonify({"success": False, "error": "配布した本人だけが取り下げられます"}), 403
+        cursor.execute("DELETE FROM circle_stickers WHERE id = ?", (sticker_id,))
+        conn.commit()
+        return jsonify({"success": True, "message": "シールの配布を取り下げました"})
+    finally:
+        conn.close()
+
+
+@app.route("/api/circles/<int:circle_id>/stickers/<int:sticker_id>/obtain", methods=["POST"])
+def obtain_circle_sticker(circle_id, sticker_id):
+    """配布シールを入手してマイシールへ追加（手帳で使えるようにする）"""
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if not cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone():
+            return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+        row = cursor.execute(
+            "SELECT id, name, image_url, category FROM circle_stickers WHERE id = ? AND circle_id = ?",
+            (sticker_id, circle_id)).fetchone()
+        if not row:
+            return jsonify({"success": False, "error": "シールが見つかりません"}), 404
+        already = cursor.execute("SELECT id FROM user_stickers WHERE user_id = ? AND image_url = ?",
+                                 (user_id, row["image_url"])).fetchone()
+        cursor.execute("""
+            INSERT OR IGNORE INTO user_stickers (user_id, name, image_url, category, source, source_id)
+            VALUES (?, ?, ?, ?, 'circle', ?)
+        """, (user_id, row["name"], row["image_url"], row["category"], row["id"]))
+        if not already:
+            cursor.execute(
+                "UPDATE circle_stickers SET downloads_count = downloads_count + 1 WHERE id = ?",
+                (row["id"],))
+        conn.commit()
+        count = cursor.execute("SELECT downloads_count FROM circle_stickers WHERE id = ?",
+                               (row["id"],)).fetchone()[0]
+        return jsonify({
+            "success": True,
+            "already": bool(already),
+            "downloads_count": count,
+            "message": "すでにマイシールにあります" if already else f"「{row['name']}」をマイシールに追加しました",
+            "sticker": {"id": row["id"], "name": row["name"], "image_url": row["image_url"],
+                        "category": row["category"]}
+        })
+    finally:
+        conn.close()
+
+
+# ==========================================================
+# 1f. マイシール（入手したシール）API
+# ==========================================================
+
+@app.route("/api/users/<int:user_id>/stickers", methods=["GET"])
+def get_user_stickers(user_id):
+    """手帳で使えるマイシール一覧"""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute("""
+            SELECT id, user_id, name, image_url, category, source, source_id, created_at
+            FROM user_stickers WHERE user_id = ? ORDER BY created_at DESC, id DESC
+        """, (user_id,)).fetchall()
+        return jsonify({"success": True, "stickers": [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+@app.route("/api/users/<int:user_id>/stickers", methods=["POST"])
+def add_user_sticker(user_id):
+    """入手したシールをマイシールへ保存（掲示板シェアの取り込みなど）"""
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()[:60] or "オリジナルシール"
+    image_url = (data.get("image_url") or "").strip()
+    category = (data.get("category") or "オリジナル").strip() or "オリジナル"
+    source = (data.get("source") or "upload").strip() or "upload"
+    source_id = data.get("source_id")
+    if not image_url:
+        return jsonify({"success": False, "error": "シール画像がありません"}), 400
+    if len(image_url) > MAX_STICKER_IMAGE_LEN:
+        return jsonify({"success": False, "error": "シール画像が大きすぎます"}), 400
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if not cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone():
+            return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+        existing = cursor.execute("SELECT id FROM user_stickers WHERE user_id = ? AND image_url = ?",
+                                  (user_id, image_url)).fetchone()
+        if existing:
+            return jsonify({"success": True, "already": True, "sticker": dict(cursor.execute(
+                "SELECT id, user_id, name, image_url, category, source, source_id FROM user_stickers WHERE id = ?",
+                (existing["id"],)).fetchone())})
+        cursor.execute("""
+            INSERT INTO user_stickers (user_id, name, image_url, category, source, source_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, name, image_url, category, source, source_id))
+        sticker_id = cursor.lastrowid
+        conn.commit()
+        return jsonify({"success": True, "already": False, "sticker": dict(cursor.execute(
+            "SELECT id, user_id, name, image_url, category, source, source_id FROM user_stickers WHERE id = ?",
+            (sticker_id,)).fetchone())}), 201
+    finally:
+        conn.close()
+
+
+# ==========================================================
+# 1g. サークルチャット API（サークル専用ページ）
+# ==========================================================
+
+@app.route("/api/circles/<int:circle_id>/messages", methods=["GET"])
+def get_circle_messages(circle_id):
+    """サークルのチャット履歴（新しい順に取得して古い順へ並べ直す）"""
+    limit = request.args.get("limit", default=100, type=int) or 100
+    limit = max(1, min(limit, 200))
+    conn = get_db_connection()
+    try:
+        if not conn.execute("SELECT id FROM circles WHERE id = ?", (circle_id,)).fetchone():
+            return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
+        rows = conn.execute("""
+            SELECT m.id, m.circle_id, m.user_id, m.content, m.created_at,
+                   u.display_name AS author_name
+            FROM circle_messages m JOIN users u ON u.id = m.user_id
+            WHERE m.circle_id = ? ORDER BY m.id DESC LIMIT ?
+        """, (circle_id, limit)).fetchall()
+        return jsonify({"success": True, "messages": [dict(r) for r in reversed(rows)]})
+    finally:
+        conn.close()
+
+
+@app.route("/api/circles/<int:circle_id>/messages", methods=["POST"])
+def create_circle_message(circle_id):
+    """チャットへ投稿（参加メンバーのみ）"""
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"success": False, "error": "メッセージを入力してください"}), 400
+    if len(content) > 500:
+        return jsonify({"success": False, "error": "メッセージは500文字以内で入力してください"}), 400
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if not cursor.execute("SELECT id FROM circles WHERE id = ?", (circle_id,)).fetchone():
+            return jsonify({"success": False, "error": "サークルが見つかりません"}), 404
+        if not cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone():
+            return jsonify({"success": False, "error": "ユーザーが見つかりません"}), 404
+        if not cursor.execute("SELECT 1 FROM circle_members WHERE circle_id = ? AND user_id = ?",
+                              (circle_id, user_id)).fetchone():
+            return jsonify({"success": False, "error": "入部するとチャットに参加できます"}), 403
+        cursor.execute("INSERT INTO circle_messages (circle_id, user_id, content) VALUES (?, ?, ?)",
+                       (circle_id, user_id, content))
+        message_id = cursor.lastrowid
+        conn.commit()
+        row = cursor.execute("""
+            SELECT m.id, m.circle_id, m.user_id, m.content, m.created_at,
+                   u.display_name AS author_name
+            FROM circle_messages m JOIN users u ON u.id = m.user_id WHERE m.id = ?
+        """, (message_id,)).fetchone()
+        return jsonify({"success": True, "chat_message": dict(row)}), 201
+    finally:
+        conn.close()
+
 
 # ==========================================================
 # 2. 手帳ページ管理 API（複数ページ・新規ページ作成）
