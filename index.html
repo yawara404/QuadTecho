@@ -20,13 +20,18 @@
 
   <!-- 注意: app.css / app.js の ?v= は変更時に必ず両方そろえて更新する
        （CDN/ブラウザのキャッシュで HTML と JS がずれると画面が描画できなくなる） -->
-  <link rel="stylesheet" href="./assets/app.css?v=20260925-fontinput" />
+  <link rel="stylesheet" href="./assets/app.css?v=20260925-menu-left" />
 </head>
 
 <body>
   <div id="app">
     <!-- ヘッダー -->
     <header class="techo-header">
+      <!-- モバイル用ハンバーガーメニュー（トップバー左上・ロゴの左） -->
+      <button class="hamburger-btn" :class="{ 'is-open': mobileMenuOpen }" @click="toggleMobileMenu"
+        :aria-label="mobileMenuOpen ? 'メニューを閉じる' : 'メニューを開く'" :aria-expanded="mobileMenuOpen ? 'true' : 'false'">
+        <span></span><span></span><span></span>
+      </button>
       <a class="brand" href="#home" @click.prevent="currentTab = 'home'" aria-label="QuadTecho ホームへ">
         <svg class="brand-icon" width="40" height="40" viewBox="0 0 64 64" fill="none"
           xmlns="http://www.w3.org/2000/svg">
@@ -86,11 +91,6 @@
 
         <button v-if="currentTab === 'canvas'" class="btn btn-save header-save-btn" @click="saveCurrentPage">
           <span>💾</span> ページ保存
-        </button>
-
-        <button class="hamburger-btn" :class="{ 'is-open': mobileMenuOpen }" @click="toggleMobileMenu"
-          :aria-label="mobileMenuOpen ? 'メニューを閉じる' : 'メニューを開く'" :aria-expanded="mobileMenuOpen ? 'true' : 'false'">
-          <span></span><span></span><span></span>
         </button>
       </div>
     </header>
@@ -1590,7 +1590,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260925-fontinput"></script>
+  <script src="./assets/app.js?v=20260925-menu-left"></script>
 </body>
 
 </html>
