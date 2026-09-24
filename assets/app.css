@@ -305,12 +305,6 @@
       color: var(--header-bg);
     }
 
-    .mobile-save-btn {
-      width: 100%;
-      margin-top: 8px;
-      justify-content: center;
-    }
-
     /* ヘッダー右側 */
     .header-controls {
       display: flex;
@@ -4278,6 +4272,11 @@
       display: none;
     }
 
+    /* モバイル：編集画面のフローティング保存ボタン（デスクトップでは非表示） */
+    .mobile-fab-save {
+      display: none;
+    }
+
     /* 幅800px以下、またはタッチ操作用デバイス（幅に関係なく）でモバイルUIへ */
     @media (max-width: 800px),
     (hover: none) and (pointer: coarse) {
@@ -4589,6 +4588,41 @@
         width: 110px;
         accent-color: #468160;
       }
+
+      /* 編集画面のフローティング保存ボタン */
+      .mobile-fab-save {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        position: fixed;
+        right: 14px;
+        bottom: calc(env(safe-area-inset-bottom) + 72px);
+        z-index: 80;
+        min-height: 46px;
+        padding: 0 18px;
+        border: 0;
+        border-radius: 24px;
+        background: #468160;
+        color: #ffffff;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 800;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+        cursor: pointer;
+        touch-action: manipulation;
+        transition: bottom 0.2s ease, transform 0.15s, background 0.15s;
+      }
+
+      .mobile-fab-save:active {
+        transform: scale(0.96);
+        background: #3a6b50;
+      }
+
+      /* アイテム選択中は操作バーと重ならない位置へ上げる */
+      .mobile-fab-save.is-raised {
+        bottom: calc(env(safe-area-inset-bottom) + 132px);
+      }
     }
 
     /* JSタッチ判定フォールバック（タッチデバイスなら幅に関係なくモバイルUI） */
@@ -4748,6 +4782,40 @@
       flex: 0 0 auto;
       width: 110px;
       accent-color: #468160;
+    }
+
+    /* 編集画面のフローティング保存ボタン（JSタッチ判定フォールバック） */
+    html.is-mobile .mobile-fab-save {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      position: fixed;
+      right: 14px;
+      bottom: calc(env(safe-area-inset-bottom) + 72px);
+      z-index: 80;
+      min-height: 46px;
+      padding: 0 18px;
+      border: 0;
+      border-radius: 24px;
+      background: #468160;
+      color: #ffffff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: bottom 0.2s ease, transform 0.15s, background 0.15s;
+    }
+
+    html.is-mobile .mobile-fab-save:active {
+      transform: scale(0.96);
+      background: #3a6b50;
+    }
+
+    html.is-mobile .mobile-fab-save.is-raised {
+      bottom: calc(env(safe-area-inset-bottom) + 132px);
     }
 
     html.is-mobile .goodnotes-toolbar {

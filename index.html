@@ -20,7 +20,7 @@
 
   <!-- 注意: app.css / app.js の ?v= は変更時に必ず両方そろえて更新する
        （CDN/ブラウザのキャッシュで HTML と JS がずれると画面が描画できなくなる） -->
-  <link rel="stylesheet" href="./assets/app.css?v=20260925-menu-left" />
+  <link rel="stylesheet" href="./assets/app.css?v=20260925-save-fab" />
 </head>
 
 <body>
@@ -117,10 +117,6 @@
       </button>
       <button :class="['mobile-nav-btn', { active: currentTab === 'circles' }]" @click="openMobileTab('__circles')">
         <span>⛺</span> サークル
-      </button>
-
-      <button v-if="currentTab === 'canvas'" class="btn btn-save mobile-save-btn" @click="saveCurrentPage">
-        <span>💾</span> ページ保存
       </button>
     </aside>
 
@@ -650,6 +646,13 @@
               </button>
             </div>
           </div>
+
+          <!-- モバイル：編集画面のフローティング保存ボタン -->
+          <button class="mobile-fab-save" :class="{ 'is-raised': !!activeItem }" @click="saveCurrentPage"
+            title="このページを保存" aria-label="このページを保存">
+            <span class="mobile-fab-save-icon">💾</span>
+            <span class="mobile-fab-save-label">保存</span>
+          </button>
 
           <!-- 手帳ビューポート（全画面デスク ＆ 背景ドラッグ可能） -->
           <section class="notebook-desk" :class="{ 'is-panning': isDraggingStage }" @pointerdown="startStageDrag"
@@ -1590,7 +1593,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260925-menu-left"></script>
+  <script src="./assets/app.js?v=20260925-save-fab"></script>
 </body>
 
 </html>
