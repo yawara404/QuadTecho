@@ -20,7 +20,7 @@
 
   <!-- 注意: app.css / app.js の ?v= は変更時に必ず両方そろえて更新する
        （CDN/ブラウザのキャッシュで HTML と JS がずれると画面が描画できなくなる） -->
-  <link rel="stylesheet" href="./assets/app.css?v=20260925-stickysize" />
+  <link rel="stylesheet" href="./assets/app.css?v=20260925-stickyfont" />
 </head>
 
 <body>
@@ -444,6 +444,15 @@
                   max="600" :value="activeItem.width" :aria-label="activeItem.item_type === 'sticky_note' ? '付箋のサイズ' : '画像の幅'"
                   @pointerdown="recordHistory" @keydown="recordHistory"
                   @input="resizeImage(activeItem, $event.target.value)" />
+                <label v-if="activeItem.item_type === 'sticky_note'" class="font-size-control" title="文字サイズ">
+                  <span class="font-size-glyph">A</span>
+                  <input class="image-size-range font-size-range" type="range" min="8" max="48" step="1"
+                    :value="stickyFontSize(activeItem)" aria-label="文字サイズ" @pointerdown="recordHistory"
+                    @keydown="recordHistory" @input="setStickyFontSize(activeItem, $event.target.value)" />
+                  <span class="font-size-value">{{ stickyFontSize(activeItem) }}</span>
+                </label>
+                <button v-if="canResizeItem" class="ctrl-btn btn-xs" @click="resetItemSize(activeItem)"
+                  title="大きさを初期サイズに戻す">↺ サイズ</button>
                 <button class="ctrl-btn btn-xs" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
                 <button class="ctrl-btn btn-xs" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
                 <button class="ctrl-btn btn-xs" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
@@ -575,6 +584,15 @@
             <input v-if="canResizeItem" class="image-size-range mobile-size-range" type="range"
               min="50" max="600" :value="activeItem.width" :aria-label="activeItem.item_type === 'sticky_note' ? '付箋のサイズ' : '画像の幅'"
               @pointerdown="recordHistory" @input="resizeImage(activeItem, $event.target.value)" />
+            <label v-if="activeItem.item_type === 'sticky_note'" class="font-size-control mobile-font-control"
+              title="文字サイズ">
+              <span class="font-size-glyph">A</span>
+              <input class="image-size-range font-size-range" type="range" min="8" max="48" step="1"
+                :value="stickyFontSize(activeItem)" aria-label="文字サイズ" @pointerdown="recordHistory"
+                @input="setStickyFontSize(activeItem, $event.target.value)" />
+            </label>
+            <button v-if="canResizeItem" class="mobile-item-btn" @click="resetItemSize(activeItem)"
+              title="大きさを初期サイズに戻す">↺ サイズ</button>
             <button class="mobile-item-btn" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
             <button class="mobile-item-btn" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
             <button class="mobile-item-btn" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
@@ -672,7 +690,8 @@
                       <div class="washi-tape"></div>
                       <div class="sticky-inner-text">
                         <textarea v-model="item.content" :readonly="currentPageId !== sheet.id || isSwitchingPage"
-                          class="sticky-editor" @pointerdown.stop @focus="recordHistory"></textarea>
+                          class="sticky-editor" :style="{ fontSize: stickyFontSize(item) + 'px' }" @pointerdown.stop
+                          @focus="recordHistory"></textarea>
                       </div>
                     </template>
                     <template v-else-if="item.item_type === 'sticker'">
@@ -1561,7 +1580,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260925-stickysize"></script>
+  <script src="./assets/app.js?v=20260925-stickyfont"></script>
 </body>
 
 </html>

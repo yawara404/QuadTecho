@@ -4198,6 +4198,33 @@
       accent-color: #468160;
     }
 
+    /* 付箋の文字サイズ調整 */
+    .font-size-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      flex: 0 0 auto;
+      padding: 0 2px;
+    }
+
+    .font-size-glyph {
+      font-size: 11px;
+      font-weight: 800;
+      color: #468160;
+    }
+
+    .font-size-range {
+      width: 56px;
+    }
+
+    .font-size-value {
+      min-width: 16px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #6b7c8f;
+      text-align: right;
+    }
+
     .techo-draggable-item {
       touch-action: none;
     }

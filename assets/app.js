@@ -554,12 +554,56 @@
         function setZoom(value) {
           zoomLevel.value = clampZoom(value);
         }
+        // 付箋の基準サイズ・基準文字サイズ（付箋はこの比率を保って拡大縮小する）
+        const STICKY_BASE_WIDTH = 170;
+        const STICKY_BASE_HEIGHT = 140;
+        const STICKY_BASE_FONT = 13;
+        const STICKY_MIN_FONT = 8;
+        const STICKY_MAX_FONT = 48;
+
+        function clampItemIntoPage(item) {
+          item.x = Math.max(20, Math.min(item.x, 900 - item.width));
+          item.y = Math.max(70, Math.min(item.y, 760 - item.height));
+        }
         function resizeImage(item, width) {
           const ratio = item.height / item.width;
           item.width = Math.min(600, 660 / ratio, Math.max(50, Number(width)));
           item.height = Math.round(item.width * ratio);
-          item.x = Math.max(20, Math.min(item.x, 900 - item.width));
-          item.y = Math.max(70, Math.min(item.y, 760 - item.height));
+          clampItemIntoPage(item);
+        }
+        // 付箋の大きさに合わせた文字サイズ（font_scale に手動調整ぶんを保持）
+        function stickyFontSize(item) {
+          if (!item || item.item_type !== 'sticky_note') return STICKY_BASE_FONT;
+          const byWidth = (item.width || STICKY_BASE_WIDTH) / STICKY_BASE_WIDTH;
+          const size = STICKY_BASE_FONT * byWidth * (item.font_scale || 1);
+          return Math.round(Math.min(STICKY_MAX_FONT, Math.max(STICKY_MIN_FONT, size)));
+        }
+        // 文字サイズを直接指定（付箋の大きさに連動する比率は維持）
+        function setStickyFontSize(item, size) {
+          if (!item || item.item_type !== 'sticky_note') return;
+          const target = Math.min(STICKY_MAX_FONT, Math.max(STICKY_MIN_FONT, Number(size) || STICKY_BASE_FONT));
+          const byWidth = (item.width || STICKY_BASE_WIDTH) / STICKY_BASE_WIDTH;
+          item.font_scale = target / (STICKY_BASE_FONT * byWidth);
+          if (!Number.isFinite(item.font_scale) || item.font_scale <= 0) item.font_scale = 1;
+        }
+        function baseItemSize(item) {
+          if (Number.isFinite(item.base_width) && Number.isFinite(item.base_height)) {
+            return { width: item.base_width, height: item.base_height };
+          }
+          // 付箋は既定サイズへ。初期サイズ未記録の画像・シールは現状維持（誤って縮小しない）
+          if (item.item_type === 'sticky_note') return { width: STICKY_BASE_WIDTH, height: STICKY_BASE_HEIGHT };
+          return { width: item.width, height: item.height };
+        }
+        // 大きさ・文字サイズを初期状態へ戻す
+        function resetItemSize(item) {
+          if (!item || !item.width || !item.height) return;
+          recordHistory();
+          const base = baseItemSize(item);
+          item.width = base.width;
+          item.height = base.height;
+          if (item.item_type === 'sticky_note') item.font_scale = 1;
+          clampItemIntoPage(item);
+          triggerToast('大きさを初期サイズに戻しました', 'info', '↺');
         }
         function startPageTabDrag(event, id) {
           if (isSwitchingPage.value || imageBusy.value) { event.preventDefault(); return; }
@@ -1058,6 +1102,8 @@
             y: 200 + (items.value.length % 4) * 15,
             width: 170,
             height: 140,
+            base_width: 170,
+            base_height: 140,
             rotation: Math.floor(Math.random() * 9) - 4,
             z_index: items.value.length + 1,
             bg_color: color
@@ -1119,6 +1165,8 @@
             y: 80 + (items.value.length % 5) * 20,
             width: 170,
             height: 140,
+            base_width: 170,
+            base_height: 140,
             rotation: Math.floor(Math.random() * 11) - 5,
             z_index: items.value.length + 1,
             bg_color: selectedColor.value
@@ -1142,6 +1190,8 @@
             y: 110 + (items.value.length % 4) * 30,
             width: 110,
             height: 110,
+            base_width: 110,
+            base_height: 110,
             rotation: Math.floor(Math.random() * 15) - 7,
             z_index: items.value.length + 1,
             bg_color: 'transparent'
@@ -1196,6 +1246,7 @@
                   id: getNextId(), page_id: pageId, user_id: userId, item_type: 'sticker', content: file.name,
                   image_url: imageUrl, x: Math.max(20, Math.min(point.x + added * 20, 900 - width)),
                   y: Math.max(70, Math.min(point.y + added * 20, 760 - height)), width, height,
+                  base_width: width, base_height: height,
                   rotation: 0, z_index: items.value.reduce((z, i) => Math.max(z, i.z_index || 0), 0) + 1, bg_color: 'transparent'
                 };
                 items.value.push(item); selectedId.value = item.id; added++;
@@ -2671,13 +2722,13 @@
               id: 0, page_id: newPage.id, user_id: currentUser.value.id,
               item_type: 'sticky_note', content: String(t).slice(0, 500), image_url: null,
               x: 80 + (i % 2) * 240, y: 90 + Math.floor(i / 2) * 200,
-              width: 190, height: 140, rotation: i % 2 ? 1.5 : -2, z_index: cloned.length + 1, bg_color: stickyColors[i % stickyColors.length]
+              width: 190, height: 140, base_width: 190, base_height: 140, rotation: i % 2 ? 1.5 : -2, z_index: cloned.length + 1, bg_color: stickyColors[i % stickyColors.length]
             }));
             srcStickers.forEach((st) => cloned.push({
               id: 0, page_id: newPage.id, user_id: currentUser.value.id,
               item_type: 'sticker', content: st.content || '', image_url: st.image_url,
               x: 120 + (cloned.length % 3) * 160, y: 110 + Math.floor(cloned.length / 3) * 150,
-              width: 110, height: 110, rotation: 0, z_index: cloned.length + 1, bg_color: 'transparent'
+              width: 110, height: 110, base_width: 110, base_height: 110, rotation: 0, z_index: cloned.length + 1, bg_color: 'transparent'
             }));
             if (isFlaskOnline.value) {
               try {
@@ -3096,7 +3147,7 @@
           selectFolder, openNewFolderModal, confirmCreateFolder, openRenameFolderModal, confirmRenameFolder, deleteFolder,
           folderNameById, getFolderPageCount, movePageToFolder, onFolderDragOver, onFolderDrop,
           stickyColors, selectedColor, newStickyContent, presetStickers,
-          items, selectedId, activeItem, canResizeItem, startDrag, addSticky, addPreset,
+          items, selectedId, activeItem, canResizeItem, stickyFontSize, setStickyFontSize, resetItemSize, startDrag, addSticky, addPreset,
           handleImageFile, removeItem,
           boardPosts, showNewBoardModal, newBoardTitle, newBoardContent,
           switchToBoard, submitBoardPost, boardSearch, boardFilter, boardSort, boardBusy, boardLoading, boardError,

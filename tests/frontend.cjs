@@ -107,6 +107,22 @@ function bootWithFetch(fetchImpl) {
   assert.equal(stickyForResize.width, 340);
   assert.equal(stickyForResize.height, 280);
   assert.equal(stickyForResize.height / stickyForResize.width, 140 / 170);
+  // 文字サイズは付箋の大きさに連動し、手動でも調整できる
+  assert.equal(state.stickyFontSize(stickyForResize), 26, '付箋を2倍にすると文字サイズも2倍（13→26）');
+  state.setStickyFontSize(stickyForResize, 30);
+  assert.equal(state.stickyFontSize(stickyForResize), 30, '手動スライダーで文字サイズを指定できる');
+  // リセットで大きさ・文字サイズが初期値へ戻る
+  state.resetItemSize(stickyForResize);
+  assert.equal(stickyForResize.width, 170);
+  assert.equal(stickyForResize.height, 140);
+  assert.equal(state.stickyFontSize(stickyForResize), 13, 'リセットで文字サイズも基準へ戻る');
+  const stickerForReset = { item_type:'sticker', width: 320, height: 160, base_width: 110, base_height: 110, x: 20, y: 70 };
+  state.resetItemSize(stickerForReset);
+  assert.equal(stickerForReset.width, 110);
+  assert.equal(stickerForReset.height, 110);
+  const legacySticker = { item_type:'sticker', width: 320, height: 160, x: 20, y: 70 };
+  state.resetItemSize(legacySticker);
+  assert.equal(legacySticker.width, 320, '初期サイズ未記録の画像はリセットで縮小しない');
   // 選択中アイテムの種別でサイズスライダーの表示を切り替える
   const prevItems = state.items.value, prevSelected = state.selectedId.value;
   state.items.value = [{ id: 9999, item_type: 'sticky_note', width: 170, height: 140, x: 80, y: 80 }];
@@ -348,5 +364,5 @@ function bootWithFetch(fetchImpl) {
   assert.equal(await hf3.state().probeFlaskOnce(), true, '再検出でサーバーを検知できる');
   assert.equal(hf3.state().isFlaskOnline.value, true, '再検出後に Flask同期 へ切り替わる');
 
-  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image & sticky sizing, posts, likes, replies, persistence, failure recovery, history traversal, my stickers, login/logout, flask detection');
+  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image & sticky sizing, sticky font size & reset, posts, likes, replies, persistence, failure recovery, history traversal, my stickers, login/logout, flask detection');
 })().catch(error => { console.error(error); process.exitCode = 1; });
