@@ -586,24 +586,27 @@
           item.font_scale = target / (STICKY_BASE_FONT * byWidth);
           if (!Number.isFinite(item.font_scale) || item.font_scale <= 0) item.font_scale = 1;
         }
-        function baseItemSize(item) {
+        // 数値入力欄から文字サイズを確定し、表示を現在値へ揃える（キーボード入力対応）
+        function commitStickyFontSize(item, size, inputEl) {
+          setStickyFontSize(item, size);
+          if (inputEl) inputEl.value = stickyFontSize(item);
+        }
+        // 付箋の初期サイズ（作成時に記録した値を優先）
+        function stickyBaseSize(item) {
           if (Number.isFinite(item.base_width) && Number.isFinite(item.base_height)) {
             return { width: item.base_width, height: item.base_height };
           }
-          // 付箋は既定サイズへ。初期サイズ未記録の画像・シールは現状維持（誤って縮小しない）
-          if (item.item_type === 'sticky_note') return { width: STICKY_BASE_WIDTH, height: STICKY_BASE_HEIGHT };
-          return { width: item.width, height: item.height };
+          return { width: STICKY_BASE_WIDTH, height: STICKY_BASE_HEIGHT };
         }
-        // 大きさ・文字サイズを初期状態へ戻す
-        function resetItemSize(item) {
-          if (!item || !item.width || !item.height) return;
+        // 付箋の大きさだけを初期サイズへ戻す（文字サイズは変更しない）
+        function resetStickySize(item) {
+          if (!item || item.item_type !== 'sticky_note') return;
           recordHistory();
-          const base = baseItemSize(item);
+          const base = stickyBaseSize(item);
           item.width = base.width;
           item.height = base.height;
-          if (item.item_type === 'sticky_note') item.font_scale = 1;
           clampItemIntoPage(item);
-          triggerToast('大きさを初期サイズに戻しました', 'info', '↺');
+          triggerToast('付箋の大きさを初期サイズに戻しました', 'info', '↺');
         }
         function startPageTabDrag(event, id) {
           if (isSwitchingPage.value || imageBusy.value) { event.preventDefault(); return; }
@@ -1190,8 +1193,6 @@
             y: 110 + (items.value.length % 4) * 30,
             width: 110,
             height: 110,
-            base_width: 110,
-            base_height: 110,
             rotation: Math.floor(Math.random() * 15) - 7,
             z_index: items.value.length + 1,
             bg_color: 'transparent'
@@ -1246,7 +1247,6 @@
                   id: getNextId(), page_id: pageId, user_id: userId, item_type: 'sticker', content: file.name,
                   image_url: imageUrl, x: Math.max(20, Math.min(point.x + added * 20, 900 - width)),
                   y: Math.max(70, Math.min(point.y + added * 20, 760 - height)), width, height,
-                  base_width: width, base_height: height,
                   rotation: 0, z_index: items.value.reduce((z, i) => Math.max(z, i.z_index || 0), 0) + 1, bg_color: 'transparent'
                 };
                 items.value.push(item); selectedId.value = item.id; added++;
@@ -2728,7 +2728,7 @@
               id: 0, page_id: newPage.id, user_id: currentUser.value.id,
               item_type: 'sticker', content: st.content || '', image_url: st.image_url,
               x: 120 + (cloned.length % 3) * 160, y: 110 + Math.floor(cloned.length / 3) * 150,
-              width: 110, height: 110, base_width: 110, base_height: 110, rotation: 0, z_index: cloned.length + 1, bg_color: 'transparent'
+              width: 110, height: 110, rotation: 0, z_index: cloned.length + 1, bg_color: 'transparent'
             }));
             if (isFlaskOnline.value) {
               try {
@@ -3147,7 +3147,7 @@
           selectFolder, openNewFolderModal, confirmCreateFolder, openRenameFolderModal, confirmRenameFolder, deleteFolder,
           folderNameById, getFolderPageCount, movePageToFolder, onFolderDragOver, onFolderDrop,
           stickyColors, selectedColor, newStickyContent, presetStickers,
-          items, selectedId, activeItem, canResizeItem, stickyFontSize, setStickyFontSize, resetItemSize, startDrag, addSticky, addPreset,
+          items, selectedId, activeItem, canResizeItem, stickyFontSize, setStickyFontSize, commitStickyFontSize, resetStickySize, startDrag, addSticky, addPreset,
           handleImageFile, removeItem,
           boardPosts, showNewBoardModal, newBoardTitle, newBoardContent,
           switchToBoard, submitBoardPost, boardSearch, boardFilter, boardSort, boardBusy, boardLoading, boardError,

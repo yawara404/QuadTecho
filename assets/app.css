@@ -4217,12 +4217,31 @@
       width: 56px;
     }
 
-    .font-size-value {
-      min-width: 16px;
+    /* 数値入力（クリックして直接入力・キーボード対応） */
+    .font-size-input {
+      width: 40px;
+      height: 22px;
+      padding: 0 3px;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #fff;
+      color: #2c3e50;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .font-size-unit {
       font-size: 10px;
       font-weight: 700;
       color: #6b7c8f;
-      text-align: right;
+    }
+
+    /* キーボード操作時のフォーカスを明示 */
+    .image-size-range:focus-visible,
+    .font-size-input:focus-visible {
+      outline: 2px solid #468160;
+      outline-offset: 2px;
     }
 
     .techo-draggable-item {
