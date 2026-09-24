@@ -20,7 +20,7 @@
 
   <!-- 注意: app.css / app.js の ?v= は変更時に必ず両方そろえて更新する
        （CDN/ブラウザのキャッシュで HTML と JS がずれると画面が描画できなくなる） -->
-  <link rel="stylesheet" href="./assets/app.css?v=20260924-postmenu" />
+  <link rel="stylesheet" href="./assets/app.css?v=20260925-stickysize" />
 </head>
 
 <body>
@@ -440,9 +440,10 @@
             <div class="toolbar-section toolbar-center">
               <div v-if="activeItem" class="item-action-bar">
                 <span class="action-bar-label">選択中:</span>
-                <input v-if="activeItem.item_type === 'sticker'" class="image-size-range" type="range" min="50"
-                  max="600" :value="activeItem.width" aria-label="画像の幅" @pointerdown="recordHistory"
-                  @keydown="recordHistory" @input="resizeImage(activeItem, $event.target.value)" />
+                <input v-if="canResizeItem" class="image-size-range" type="range" min="50"
+                  max="600" :value="activeItem.width" :aria-label="activeItem.item_type === 'sticky_note' ? '付箋のサイズ' : '画像の幅'"
+                  @pointerdown="recordHistory" @keydown="recordHistory"
+                  @input="resizeImage(activeItem, $event.target.value)" />
                 <button class="ctrl-btn btn-xs" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
                 <button class="ctrl-btn btn-xs" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
                 <button class="ctrl-btn btn-xs" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
@@ -571,9 +572,9 @@
 
           <!-- モバイル：選択アイテム操作バー（アイテム選択中に下部へ浮かぶ） -->
           <div v-if="activeItem" class="mobile-item-actions" @pointerdown.stop>
-            <input v-if="activeItem.item_type === 'sticker'" class="image-size-range mobile-size-range" type="range"
-              min="50" max="600" :value="activeItem.width" aria-label="画像の幅" @pointerdown="recordHistory"
-              @input="resizeImage(activeItem, $event.target.value)" />
+            <input v-if="canResizeItem" class="image-size-range mobile-size-range" type="range"
+              min="50" max="600" :value="activeItem.width" :aria-label="activeItem.item_type === 'sticky_note' ? '付箋のサイズ' : '画像の幅'"
+              @pointerdown="recordHistory" @input="resizeImage(activeItem, $event.target.value)" />
             <button class="mobile-item-btn" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
             <button class="mobile-item-btn" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
             <button class="mobile-item-btn" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
@@ -1560,7 +1561,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260924-postmenu"></script>
+  <script src="./assets/app.js?v=20260925-stickysize"></script>
 </body>
 
 </html>

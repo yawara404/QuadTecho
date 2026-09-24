@@ -452,6 +452,8 @@
         const items = ref([]);
         const selectedId = ref(null);
         const activeItem = computed(() => items.value.find(i => i.id === selectedId.value) || null);
+        // 画像・シールと同じように、選択中の付箋もスライダーで大きさを変更できる
+        const canResizeItem = computed(() => !!activeItem.value && ['sticker', 'sticky_note'].includes(activeItem.value.item_type));
 
         const sheetPlaneRef = ref(null);
         const sheetCache = ref({});
@@ -3094,7 +3096,7 @@
           selectFolder, openNewFolderModal, confirmCreateFolder, openRenameFolderModal, confirmRenameFolder, deleteFolder,
           folderNameById, getFolderPageCount, movePageToFolder, onFolderDragOver, onFolderDrop,
           stickyColors, selectedColor, newStickyContent, presetStickers,
-          items, selectedId, activeItem, startDrag, addSticky, addPreset,
+          items, selectedId, activeItem, canResizeItem, startDrag, addSticky, addPreset,
           handleImageFile, removeItem,
           boardPosts, showNewBoardModal, newBoardTitle, newBoardContent,
           switchToBoard, submitBoardPost, boardSearch, boardFilter, boardSort, boardBusy, boardLoading, boardError,

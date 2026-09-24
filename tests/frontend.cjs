@@ -101,6 +101,19 @@ function bootWithFetch(fetchImpl) {
   state.resizeImage(photo, 600);
   assert.equal(photo.height / photo.width, 2);
   assert.ok(photo.height <= 660 && photo.y + photo.height <= 760);
+  // 付箋も画像と同じく比率を保ったまま大きさを変更できる
+  const stickyForResize = { item_type:'sticky_note', width:170, height:140, x:80, y:80 };
+  state.resizeImage(stickyForResize, 340);
+  assert.equal(stickyForResize.width, 340);
+  assert.equal(stickyForResize.height, 280);
+  assert.equal(stickyForResize.height / stickyForResize.width, 140 / 170);
+  // 選択中アイテムの種別でサイズスライダーの表示を切り替える
+  const prevItems = state.items.value, prevSelected = state.selectedId.value;
+  state.items.value = [{ id: 9999, item_type: 'sticky_note', width: 170, height: 140, x: 80, y: 80 }];
+  state.selectedId.value = 9999;
+  assert.equal(state.canResizeItem.value, true, '付箋を選択するとサイズスライダーを表示');
+  state.items.value = prevItems; state.selectedId.value = prevSelected;
+  assert.equal(state.canResizeItem.value, false, '非選択ならサイズスライダーは出ない');
   await state.closeSheet(2);
   assert.equal(state.visibleSheets.value.length, 1);
   assert.equal(state.currentPageId.value, 1);
@@ -335,5 +348,5 @@ function bootWithFetch(fetchImpl) {
   assert.equal(await hf3.state().probeFlaskOnce(), true, '再検出でサーバーを検知できる');
   assert.equal(hf3.state().isFlaskOnline.value, true, '再検出後に Flask同期 へ切り替わる');
 
-  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image sizing, posts, likes, replies, persistence, failure recovery, history traversal, my stickers, login/logout, flask detection');
+  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image & sticky sizing, posts, likes, replies, persistence, failure recovery, history traversal, my stickers, login/logout, flask detection');
 })().catch(error => { console.error(error); process.exitCode = 1; });
