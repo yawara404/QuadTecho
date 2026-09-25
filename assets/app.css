@@ -4623,6 +4623,48 @@
       .mobile-fab-save.is-raised {
         bottom: calc(env(safe-area-inset-bottom) + 132px);
       }
+
+      /* ノート内の上部バーをモバイルで見やすく（ノート内で大きめ表示） */
+      .notebook-meta-header {
+        padding: 16px 18px 12px 16px;
+        border-bottom: 3px solid #cbbc9f;
+        font-size: 26px;
+        color: #55677a;
+        gap: 10px;
+      }
+
+      .notebook-meta-header>span {
+        flex: 0 1 auto;
+        min-width: 0;
+        font-weight: 700;
+      }
+
+      .sheet-handle {
+        gap: 12px;
+      }
+
+      .sheet-header-actions {
+        gap: 10px;
+      }
+
+      .sheet-header-actions .ctrl-btn {
+        height: 88px;
+        min-width: 88px;
+        padding: 0 20px;
+        font-size: 26px;
+        border-radius: 14px;
+      }
+
+      .sheet-header-actions .ctrl-btn.sheet-close-btn {
+        font-size: 48px;
+        line-height: 1;
+      }
+
+      .sheet-editing {
+        font-size: 24px;
+        padding: 12px 20px;
+        border-radius: 30px;
+      }
     }
 
     /* JSタッチ判定フォールバック（タッチデバイスなら幅に関係なくモバイルUI） */
@@ -4816,6 +4858,48 @@
 
     html.is-mobile .mobile-fab-save.is-raised {
       bottom: calc(env(safe-area-inset-bottom) + 132px);
+    }
+
+    /* ノート内の上部バーをモバイルで見やすく（JSタッチ判定フォールバック） */
+    html.is-mobile .notebook-meta-header {
+      padding: 16px 18px 12px 16px;
+      border-bottom: 3px solid #cbbc9f;
+      font-size: 26px;
+      color: #55677a;
+      gap: 10px;
+    }
+
+    html.is-mobile .notebook-meta-header>span {
+      flex: 0 1 auto;
+      min-width: 0;
+      font-weight: 700;
+    }
+
+    html.is-mobile .sheet-handle {
+      gap: 12px;
+    }
+
+    html.is-mobile .sheet-header-actions {
+      gap: 10px;
+    }
+
+    html.is-mobile .sheet-header-actions .ctrl-btn {
+      height: 88px;
+      min-width: 88px;
+      padding: 0 20px;
+      font-size: 26px;
+      border-radius: 14px;
+    }
+
+    html.is-mobile .sheet-header-actions .ctrl-btn.sheet-close-btn {
+      font-size: 48px;
+      line-height: 1;
+    }
+
+    html.is-mobile .sheet-editing {
+      font-size: 24px;
+      padding: 12px 20px;
+      border-radius: 30px;
     }
 
     html.is-mobile .goodnotes-toolbar {
