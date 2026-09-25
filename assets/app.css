@@ -4300,6 +4300,9 @@
         border-bottom: 1px solid #e2d8c4;
         margin-top: 0;
         min-height: 44px;
+        /* スマホでも横スワイプでタブを送れるようにする（はみ出したタブを見切れさせない） */
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
       }
 
       /* モバイルではツールバーが無いため、タブを通常のピル型にして視認性を確保 */
@@ -4308,6 +4311,8 @@
         border-top: 1px solid #cbbfab;
         border-radius: 9px;
         font-size: 12px;
+        /* タブ上の指操作でもタブバーの横スクロールを優先（タップ・並べ替えは維持） */
+        touch-action: pan-x;
       }
 
       .goodnotes-tab.hanging-tab.active {
@@ -4912,6 +4917,9 @@
       border-bottom: 1px solid #e2d8c4;
       margin-top: 0;
       min-height: 44px;
+      /* スマホでも横スワイプでタブを送れるようにする（はみ出したタブを見切れさせない） */
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
     }
 
     html.is-mobile .goodnotes-tab.hanging-tab {
@@ -4919,6 +4927,8 @@
       border-top: 1px solid #cbbfab;
       border-radius: 9px;
       font-size: 12px;
+      /* タブ上の指操作でもタブバーの横スクロールを優先（タップ・並べ替えは維持） */
+      touch-action: pan-x;
     }
 
     html.is-mobile .goodnotes-tab.hanging-tab.active {

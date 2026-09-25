@@ -510,7 +510,8 @@
             draggedPageId.value = null;
             if (!moved) {
               // 移動しなかった＝通常のタブクリック
-              switchPage(id);
+              // ただし横スクロール開始時に飛ぶ pointercancel はタップ扱いしない
+              if (e.type === 'pointerup') switchPage(id);
               return;
             }
             suppressTabClickUntil = Date.now() + 400;
@@ -683,8 +684,11 @@
         }
 
         // 初期表示：ページ全体が画面内に収まるよう縮小・中央寄せ（その倍率を100%とする）
-        function fitInitialView() {
+        // preserveZoomRatio=true のときは、ユーザーが設定した表示倍率（fitScale基準の%）を保ったまま
+        // 新しいデスクサイズへ合わせ直す（デスクトップ⇔モバイル切り替え用）
+        function fitInitialView(preserveZoomRatio = false) {
           if (!pages.value.length) return;
+          const prevRatio = (preserveZoomRatio && fitScale.value > 0) ? (zoomLevel.value / fitScale.value) : 1;
           nextTick(() => {
             const desk = deskRef.value;
             if (!desk) return;
@@ -705,7 +709,7 @@
             const fit = Math.min(1, (deskW - marginX) / totalW, (deskH - marginY) / totalH);
             const scale = Math.floor(clampZoom(fit) * 20) / 20;
             fitScale.value = scale;
-            zoomLevel.value = scale;
+            zoomLevel.value = clampZoom(scale * prevRatio);
             stagePos.value = { x: 0, y: 0 };
 
             // 実測してページ全体がデスク中央に来るよう補正
@@ -3021,13 +3025,39 @@
           // html.is-mobile クラスでモバイルUIを強制する（幅・解像度に関係なく）
           const applyDeviceClass = () => {
             const root = document.documentElement;
+            const mobile = !!isMobileDevice();
             if (root && root.classList) {
-              root.classList.toggle('is-mobile', !!isMobileDevice());
+              root.classList.toggle('is-mobile', mobile);
             }
+            return mobile;
           };
-          applyDeviceClass();
-          window.addEventListener('resize', applyDeviceClass);
-          window.addEventListener('orientationchange', applyDeviceClass);
+          // デスクトップ⇔モバイル（レスポンシブ切替・回転・幅の閾値越え）で
+          // ノートのフィット倍率を計算し直し、前の画面サイズの倍率が残って
+          // 「巨大／小さすぎ」になるのを防ぐ。表示倍率（%）は維持する。
+          let lastMobileMode = applyDeviceClass();
+          let lastNarrow = window.innerWidth <= 800;
+          let refitTimer = null;
+          const requestCanvasRefit = () => {
+            if (currentTab.value !== 'canvas') return;
+            if (refitTimer) clearTimeout(refitTimer);
+            refitTimer = setTimeout(() => {
+              refitTimer = null;
+              fitInitialView(true);
+            }, 180);
+          };
+          const handleViewportChange = () => {
+            const mobile = applyDeviceClass();
+            const narrow = window.innerWidth <= 800;
+            const layoutChanged = mobile !== lastMobileMode || narrow !== lastNarrow;
+            lastMobileMode = mobile;
+            lastNarrow = narrow;
+            if (layoutChanged) requestCanvasRefit();
+          };
+          window.addEventListener('resize', handleViewportChange);
+          window.addEventListener('orientationchange', () => {
+            applyDeviceClass();
+            requestCanvasRefit();
+          });
 
           // キーボードショートカット登録 (⌘Z, ⌘⇧Z, Ctrl+Z, Ctrl+Y)
           window.addEventListener('keydown', handleKeyDown);
@@ -3104,6 +3134,8 @@
           // キャンバスを直接開いた場合も、初期表示を整える
           if (currentTab.value === 'canvas') {
             fitInitialView();
+            // 複数タブを開いた状態で復元したとき、選択中のタブが画面外に隠れないよう中央へ寄せる
+            nextTick(scrollActiveTabIntoView);
           }
 
           // サークル専用ページ（#circle/<id>）を直接開いた場合はデータを読み込む
