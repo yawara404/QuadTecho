@@ -93,12 +93,12 @@ node tests/frontend.cjs
 検索エンジンへの登録・クロール設定は次のとおりです。
 
 ### 1. 所有権確認（プロパティ登録）
-1. [Google Search Console](https://search.google.com/search-console) で「**URL プレフィックス**」を選び、`https://music.wawa-app.me/QuadTecho/` を登録します。
-2. 確認方法で「**HTML タグ**」を選び、表示された `content="..."` の値を `index.html` の
-   `<meta name="google-site-verification" content="REPLACE_WITH_GOOGLE_SEARCH_CONSOLE_TOKEN" />` に貼り替えます。
-3. 公開してから「確認」を押します（HTML ファイル方式を使う場合は、発行された `google<ID>.html` を `index.html` と同じディレクトリへ置いてください）。
+1. [Google Search Console](https://search.google.com/search-console) で「**URL プレフィックス**」プロパティとして `https://music.wawa-app.me/QuadTecho/` を登録します。
+2. 確認方法は「**HTML タグ**」を使用し、発行された値を `index.html` の
+   `<meta name="google-site-verification" content="..." />` に設定します（**設定済み**。プロパティを作り直した場合のみ差し替え）。
+3. 公開してから画面の「確認」を押します（HTML ファイル方式を使う場合は、発行された `google<ID>.html` を `index.html` と同じディレクトリへ置いてください）。
 
-> `index.html` の所有権確認タグ・`robots.txt`・`sitemap.xml`・構造化データ（JSON-LD）は**設定済み**です。確認タグの値だけが未設定（プレースホルダ）です。
+> `index.html` の所有権確認タグ・`robots.txt`・`sitemap.xml`・構造化データ（JSON-LD）・サイトアイコンは**すべて設定済み**です。
 
 ### 2. クロール設定ファイル
 | ファイル | 公開先 | 用途 |
