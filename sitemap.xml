@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- QuadTecho サイトマップ
+     画面切り替えは #home / #canvas などのハッシュで行うため、Google が索引するのは
+     基本URLの1件のみです（各タブは独立したURLとして索引されません）。
+     内容を更新したら <lastmod> を更新してください。 -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://music.wawa-app.me/QuadTecho/</loc>
+    <lastmod>2026-09-28</lastmod>
+    <image:image>
+      <image:loc>https://music.wawa-app.me/QuadTecho/assets/ogp.png</image:loc>
+      <image:title>QuadTecho - 毎日を、わたしの一冊に。</image:title>
+    </image:image>
+  </url>
+</urlset>

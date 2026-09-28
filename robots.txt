@@ -1,0 +1,18 @@
+# QuadTecho robots.txt
+#
+# 【置き場所の注意】
+# robots.txt は「ホスト直下」のパスで配信された場合だけ Google が読みます。
+#   有効: https://music.wawa-app.me/robots.txt
+#   無効: https://music.wawa-app.me/QuadTecho/robots.txt
+# 本サイトではホスト直下にもこのファイルが配信されるよう配置してあります。
+# 別のホスト構成で /QuadTecho/ 配下だけを公開する場合は、同じ内容を
+# ホスト直下へコピーしてください（無い場合は「クロール全許可」として扱われます）。
+# 配置後は https://music.wawa-app.me/robots.txt が実際に開けるか確認してください。
+
+User-agent: *
+Allow: /
+
+# アプリの内部API（JSON）は検索結果に出す意味がなく、クロール予算を使うので除外する
+Disallow: /QuadTecho/api/
+
+Sitemap: https://music.wawa-app.me/QuadTecho/sitemap.xml

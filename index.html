@@ -29,6 +29,20 @@
   <meta name="twitter:image" content="https://music.wawa-app.me/QuadTecho/assets/ogp.png" />
   <meta name="twitter:image:alt" content="QuadTecho - 毎日を、わたしの一冊に。" />
 
+  <!-- Google Search Console（所有権確認）
+       1. https://search.google.com/search-console で「URL プレフィックス」プロパティとして
+          https://music.wawa-app.me/QuadTecho/ を追加する
+       2. 確認方法で「HTML タグ」を選び、表示された content="..." の値を
+          下の content="..." に貼り付ける（そのままだと確認できません）
+       3. 保存後に Search Console の「確認」を押す
+       ※ HTML ファイル方式を使う場合は、発行された google<ID>.html を
+         この index.html と同じディレクトリ（公開URL直下）に置く -->
+  <meta name="google-site-verification" content="REPLACE_WITH_GOOGLE_SEARCH_CONSOLE_TOKEN" />
+
+  <!-- 検索エンジン向け: インデックス許可 ＆ 大きめの画像プレビューを許可 -->
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="googlebot" content="index, follow, max-image-preview:large" />
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,9 +56,53 @@
   <!-- 注意: app.css / app.js の ?v= は変更時に必ず両方そろえて更新する
        （CDN/ブラウザのキャッシュで HTML と JS がずれると画面が描画できなくなる） -->
   <link rel="stylesheet" href="./assets/app.css?v=20260928-keyshorts-dirty" />
+
+  <!-- 構造化データ: 検索結果にサイト名・アプリ情報を伝える（Google Search Console のリッチリザルト対象） -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://music.wawa-app.me/QuadTecho/#website",
+          "url": "https://music.wawa-app.me/QuadTecho/",
+          "name": "QuadTecho",
+          "alternateName": "クアッド・テチョウ",
+          "description": "付箋やシールで自由にデコレーションできる、シンプルで使いやすい学生風手帳サイト。",
+          "inLanguage": "ja-JP"
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://music.wawa-app.me/QuadTecho/#webapp",
+          "name": "QuadTecho",
+          "url": "https://music.wawa-app.me/QuadTecho/",
+          "applicationCategory": "LifestyleApplication",
+          "operatingSystem": "Web",
+          "browserRequirements": "JavaScript が必要です（Chrome / Safari / Edge / Firefox の最新版）",
+          "description": "付箋やシールで自由にデコレーションできる学生風の手帳サイト。手帳の管理・共有掲示板・サークル機能を備えています。",
+          "image": "https://music.wawa-app.me/QuadTecho/assets/ogp.png",
+          "inLanguage": "ja-JP",
+          "isAccessibleForFree": true,
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "JPY"
+          }
+        }
+      ]
+    }
+  </script>
 </head>
 
 <body>
+  <!-- JS が無効な環境（一部のクローラ・テキストブラウザ）向けの説明。
+       Vue のマウント対象（#app）の外に置くことで、描画の邪魔をしない -->
+  <noscript>
+    <h1>QuadTecho（クアッド・テチョウ）</h1>
+    <p>付箋やシールで自由にデコレーションできる、シンプルで使いやすい学生風の手帳サイトです。手帳の管理、共有掲示板、サークル（部活）機能を備えています。ご利用には JavaScript を有効にしてください。</p>
+    <p><a href="https://music.wawa-app.me/QuadTecho/">QuadTecho を開く</a></p>
+  </noscript>
+
   <div id="app">
     <!-- ヘッダー -->
     <header class="techo-header">

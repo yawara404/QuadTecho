@@ -88,6 +88,36 @@ node tests/frontend.cjs
 ```
 テストは一時DBとメモリ内ストレージを使い、実データを変更しません。
 
+## 🔍 Google Search Console 対応
+
+検索エンジンへの登録・クロール設定は次のとおりです。
+
+### 1. 所有権確認（プロパティ登録）
+1. [Google Search Console](https://search.google.com/search-console) で「**URL プレフィックス**」を選び、`https://music.wawa-app.me/QuadTecho/` を登録します。
+2. 確認方法で「**HTML タグ**」を選び、表示された `content="..."` の値を `index.html` の
+   `<meta name="google-site-verification" content="REPLACE_WITH_GOOGLE_SEARCH_CONSOLE_TOKEN" />` に貼り替えます。
+3. 公開してから「確認」を押します（HTML ファイル方式を使う場合は、発行された `google<ID>.html` を `index.html` と同じディレクトリへ置いてください）。
+
+> `index.html` の所有権確認タグ・`robots.txt`・`sitemap.xml`・構造化データ（JSON-LD）は**設定済み**です。確認タグの値だけが未設定（プレースホルダ）です。
+
+### 2. クロール設定ファイル
+| ファイル | 公開先 | 用途 |
+|---|---|---|
+| `sitemap.xml` | https://music.wawa-app.me/QuadTecho/sitemap.xml | Search Console の「サイトマップ」で送信 |
+| `robots.txt` | https://music.wawa-app.me/QuadTecho/robots.txt | クロール制御（API を除外、サイトマップを案内） |
+
+- **robots.txt は「ホスト直下」で配信された場合だけ Google に読まれます。** Google が見るのは `https://music.wawa-app.me/robots.txt` のみで、`/QuadTecho/robots.txt` は参照されません。本サイトはホスト直下にもこのファイルが配信されるよう配置してあるため、そのまま有効です（別ホスト構成にする場合はホスト直下へ同じ内容をコピーしてください。未設置の場合は「クロール全許可」として扱われます）。
+- 配置後は `https://music.wawa-app.me/robots.txt` と `https://music.wawa-app.me/QuadTecho/sitemap.xml` をブラウザで開き、内容が表示されるか確認してください。
+
+### 3. インデックスの仕様（把握しておく点）
+- 画面の切り替えは `#home` / `#canvas` / `#board` などの**ハッシュ**で行うため、Google が索引するのは `https://music.wawa-app.me/QuadTecho/` の**1件のみ**です。各タブは独立したページとして索引されません（sitemap も1件）。
+- 本文は JavaScript で描画されるため、`<noscript>` に説明文を、`<head>` に description・canonical・OGP・JSON-LD を用意しています。
+- 変更を公開したら、Search Console の「**URL 検査**」→「**インデックス登録をリクエスト**」で再クロールを促せます。
+
+### 4. 公開（Cloudflare Tunnel）側の確認
+- Cloudflare の **Bot Fight Mode** が有効だと Googlebot が 403 になり、Search Console で「取得できません」になります。Security → Bots で Googlebot を許可するか、Bot Fight Mode を無効にしてください。
+- サーバー停止中は公開URLへアクセスできないため、確認・インデックス登録はサーバー起動中に行ってください。
+
 ## 注意
 
 - 本リポジトリはオープンソースではありません。セットアップ手順・内部運用情報は含めていません。
