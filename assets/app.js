@@ -144,14 +144,24 @@
           triggerToast('傾きを水平(0°)に戻しました 🔄');
         }
 
-        // キーボードショートカット (⌘Z / ⌘⇧Z / Ctrl+Z / Ctrl+Y)
+        // キーボードショートカット
+        //   ⌘Z / Ctrl+Z・⌘⇧Z / Ctrl+Y : 元に戻す・やり直す
+        //   ⌘S / Ctrl+S             : 現在のページを保存（ブラウザの保存ダイアログを抑止）
+        //   ⌘D / Ctrl+D             : 選択中の付箋・シールを複製
+        //   Delete / Backspace      : 選択中の付箋・シールを剥がす
+        //   矢印キー（Shiftで10px）  : 選択中を1pxずつ微移動
+        //   Esc                     : 選択解除・モーダルやメニューを閉じる
         function handleKeyDown(e) {
-          const isInput = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT';
-          if (isInput) return; // テキスト入力中はブラウザネイティブのテキストUndoを妨げない
-
-          const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+          // 日本語IMEの変換中はショートカットを動かさない（変換確定のEnter・取消のEscを奪わない）
+          if (isComposingKey(e)) return;
+          const target = e.target || {};
+          const tag = String(target.tagName || '').toUpperCase();
+          const isInput = tag === 'TEXTAREA' || tag === 'INPUT' || target.isContentEditable === true;
+          const platform = (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '';
+          const isMac = platform.toUpperCase().indexOf('MAC') >= 0;
           const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
 
+          // ⌘/Ctrl 併用の操作：付箋の文字入力中でも効かせたいもの
           if (isCmdOrCtrl && !e.altKey) {
             if (e.key === 'z' || e.key === 'Z') {
               e.preventDefault();
@@ -160,11 +170,69 @@
               } else {
                 undo();
               }
-            } else if (e.key === 'y' || e.key === 'Y') {
+              return;
+            }
+            if (e.key === 'y' || e.key === 'Y') {
               e.preventDefault();
               redo();
+              return;
+            }
+            if (e.key === 's' || e.key === 'S') {
+              // ブラウザ標準の「ページを保存」を止めて、手帳の保存を実行する
+              e.preventDefault();
+              saveCurrentPage();
+              return;
+            }
+            if ((e.key === 'd' || e.key === 'D') && activeItem.value) {
+              e.preventDefault();
+              duplicateItem(activeItem.value);
+              return;
             }
           }
+
+          // Esc：モーダル・メニューを閉じ、選択も解除する（入力中はフォーカスを外す）
+          if (e.key === 'Escape') {
+            if (isInput && typeof target.blur === 'function') {
+              try { target.blur(); } catch (_) { }
+            }
+            selectedId.value = null;
+            closeOpenMenus();
+            closeAllOverlays();
+            return;
+          }
+
+          if (isInput) return; // ここから下の単独キー操作は、テキスト入力の邪魔をしない
+
+          // キャンバスの編集操作は手帳画面のみ（一覧・掲示板では無効）。
+          // モーダル・パレット・メニューを開いている間は、背面の付箋を動かさない。
+          if (currentTab.value !== 'canvas' || !activeItem.value || overlayOpenCount.value > 0) return;
+
+          if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            removeItem(activeItem.value.id);
+            return;
+          }
+
+          const step = e.shiftKey ? 10 : 1;
+          const direction = {
+            ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
+          }[e.key];
+          if (direction) {
+            e.preventDefault();
+            nudgeSelectedBy(direction[0] * step, direction[1] * step);
+          }
+        }
+
+        // 日本語IMEの変換確定Enterで、意図しない確定・送信をしないようにする。
+        // 変換中は isComposing / keyCode 229 で判定し、そのときは何もせず標準の入力動作に任せる。
+        function isComposingKey(e) {
+          return !!e && (e.isComposing === true || e.keyCode === 229);
+        }
+        // 入力欄のEnter確定用：変換中は無視し、確定後だけ preventDefault して実行する
+        function submitOnEnter(event, action) {
+          if (typeof action !== 'function' || isComposingKey(event)) return undefined;
+          if (event && typeof event.preventDefault === 'function') event.preventDefault();
+          return action();
         }
 
         // ユーザー状態
@@ -454,6 +522,15 @@
         const activeItem = computed(() => items.value.find(i => i.id === selectedId.value) || null);
         // 画像・シールと同じように、選択中の付箋もスライダーで大きさを変更できる
         const canResizeItem = computed(() => !!activeItem.value && ['sticker', 'sticky_note'].includes(activeItem.value.item_type));
+
+        // ================= 💾 未保存インジケータ =================
+        // 最後に保存したときの内容と比べ、違いがあるときだけ「保存が必要」と伝える。
+        // 保存ボタンの色とラベル、モバイルの保存ボタン、離脱時の確認に使う。
+        const savedItemsSnapshot = ref(JSON.stringify(items.value));
+        const isDirty = computed(() => JSON.stringify(items.value) !== savedItemsSnapshot.value);
+        function markItemsSaved() {
+          savedItemsSnapshot.value = JSON.stringify(items.value);
+        }
 
         const sheetPlaneRef = ref(null);
         const sheetCache = ref({});
@@ -1091,6 +1168,39 @@
           window.removeEventListener('pointercancel', stopDrag);
         }
 
+        // ================= ⌨️ 矢印キーでの微調整（選択中の付箋・シール） =================
+        // マウスでドラッグしにくい数pxのズレを、キーで直せるようにする。
+        // 連続入力は1回のUndoにまとめ、位置はドラッグと同じくノート内に収める。
+        let nudgeHistoryOpen = false;
+        let nudgeHistoryTimer = null;
+        function nudgeSelectedBy(dx, dy) {
+          const item = activeItem.value;
+          if (!item) return;
+          if (!nudgeHistoryOpen) {
+            recordHistory();
+            nudgeHistoryOpen = true;
+          }
+          if (nudgeHistoryTimer != null && typeof clearTimeout === 'function') {
+            clearTimeout(nudgeHistoryTimer);
+          }
+          if (typeof setTimeout === 'function') {
+            nudgeHistoryTimer = setTimeout(() => { nudgeHistoryOpen = false; nudgeHistoryTimer = null; }, 700);
+          }
+
+          let nx = Math.round((Number(item.x) || 0) + dx);
+          let ny = Math.round((Number(item.y) || 0) + dy);
+          if (notebookRef.value) {
+            const rect = notebookRef.value.getBoundingClientRect();
+            nx = Math.max(20, Math.min(nx, (rect.width / zoomLevel.value) - (item.width || 140)));
+            ny = Math.max(70, Math.min(ny, (rect.height / zoomLevel.value) - (item.height || 140)));
+          } else {
+            nx = Math.max(20, nx);
+            ny = Math.max(70, ny);
+          }
+          item.x = nx;
+          item.y = ny;
+        }
+
         function getNextId() {
           return items.value.reduce((m, i) => Math.max(m, i.id || 0), 0) + 1;
         }
@@ -1311,6 +1421,7 @@
               const data = await res.json();
               if (data.success) {
                 items.value = data.items;
+                markItemsSaved();
                 return;
               }
             } catch (_) { }
@@ -1328,6 +1439,8 @@
           } else {
             items.value = [];
           }
+          // 開いた直後は未保存の変更なし（読込内容を保存済みの基準にする）
+          markItemsSaved();
         }
 
         async function switchPage(targetPageId) {
@@ -1544,6 +1657,8 @@
           sheetCache.value[pageId] = JSON.parse(JSON.stringify(items.value));
           localStorage.setItem(`quadtecho_items_page_${pageId}`, JSON.stringify(items.value));
           localStorage.setItem(`quadtecho_pages_user_${currentUser.value.id}`, JSON.stringify(pages.value));
+          // 保存できた内容を「基準」にして未保存インジケータを消す
+          markItemsSaved();
 
           if (isFlaskOnline.value) {
             try {
@@ -3017,6 +3132,16 @@
           flaskProbeTimer = null;
         }
 
+        // ================= 未保存のまま離脱するときの確認 =================
+        // 手帳の編集は「ページ保存」で確定するため、保存せずにタブを閉じる／再読み込み
+        // しようとしたらブラウザ標準の確認ダイアログを出す。
+        function handleBeforeUnload(e) {
+          if (!isDirty.value) return undefined;
+          if (e && typeof e.preventDefault === 'function') e.preventDefault();
+          if (e) e.returnValue = '';
+          return '';
+        }
+
         // ================= 初期化 ＆ ポート自動探査 =================
         onMounted(async () => {
           // 履歴トラバーサル（ブラウザの戻る/進む）を有効化
@@ -3059,8 +3184,10 @@
             requestCanvasRefit();
           });
 
-          // キーボードショートカット登録 (⌘Z, ⌘⇧Z, Ctrl+Z, Ctrl+Y)
+          // キーボードショートカット登録 (⌘Z/⌘S/⌘D・Delete・矢印・Esc)
           window.addEventListener('keydown', handleKeyDown);
+          // 未保存のまま閉じる／再読み込みするときの確認
+          window.addEventListener('beforeunload', handleBeforeUnload);
           window.addEventListener('paste', pasteImage);
 
           // 投稿・チャットの三点メニューは画面のどこかをクリックしたら閉じる
@@ -3166,6 +3293,8 @@
           stagePos, isDraggingStage, isPaletteCollapsed, mobilePaletteOpen, toggleMobilePalette, startStageDrag, resetStagePos,
           onDeskWheel, onGestureStart, onGestureChange, onGestureEnd,
           undo, redo, canUndo, canRedo, recordHistory, resetItemRotation,
+          isDirty, markItemsSaved, nudgeSelectedBy, handleKeyDown, handleBeforeUnload,
+          isComposingKey, submitOnEnter,
           paperStyle, zoomLevel, fitScale, quickDropSticky, bringToFront, sendToBack, duplicateItem,
           showUserModal, showSignupModal, showProfileModal, profileForm, currentUser, usersList, modalUsers, switchableUsers, newUserForm, loginUsername, selectUser, loginByUsername, logout, openProfileModal, saveProfile, uploadAvatar, avatarSrc, createNewUser, openSignupModal, backToLoginModal,
           pages, currentPageId, currentPage, showNewPageModal, newPageTitle,

@@ -418,6 +418,15 @@
       background: var(--primary-dark);
     }
 
+    /* 未保存の変更があるときはオレンジにして「保存が必要」と気づけるようにする */
+    .btn-save.is-dirty {
+      background: #e08a2e;
+    }
+
+    .btn-save.is-dirty:hover {
+      background: #c9761f;
+    }
+
     .btn-secondary {
       background: #e0d8cb;
       color: #2d3436;
@@ -957,14 +966,30 @@
     }
 
     @media (max-width: 900px) {
+      /* モバイルはフォルダを上に積む。縦積み時も横方向へ伸びるよう戻し、
+         手帳カードが左に寄って右側だけ余白が残る状態を防ぐ */
       .folder-list-layout {
         flex-direction: column;
+        align-items: stretch;
       }
 
       .folder-sidebar {
         width: 100%;
         position: static;
         max-height: none;
+      }
+
+      /* 手帳カードはグリッド幅いっぱい（最大520px）まで伸ばして中央にそろえる。
+         1列のときは左右の余白が等しくなり、2列に並ぶ幅では左右の端まで埋まる。
+         auto-fit で、カードが1枚だけ（または0枚）のときも中央に来るようにする */
+      .memo-books-grid {
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        justify-items: center;
+      }
+
+      .memo-books-grid>* {
+        width: 100%;
+        max-width: 520px;
       }
     }
 
@@ -4629,6 +4654,20 @@
         bottom: calc(env(safe-area-inset-bottom) + 132px);
       }
 
+      /* 未保存の変更があるときは色と●で知らせる */
+      .mobile-fab-save.is-dirty {
+        background: #d9702a;
+      }
+
+      .mobile-fab-save-dot {
+        flex: 0 0 auto;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #ffd166;
+        box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.4);
+      }
+
       /* ノート内の上部バーをモバイルで見やすく（ノート内で大きめ表示） */
       .notebook-meta-header {
         padding: 16px 18px 12px 16px;
@@ -4863,6 +4902,20 @@
 
     html.is-mobile .mobile-fab-save.is-raised {
       bottom: calc(env(safe-area-inset-bottom) + 132px);
+    }
+
+    /* 未保存の変更があるときは色と●で知らせる（JSタッチ判定フォールバック） */
+    html.is-mobile .mobile-fab-save.is-dirty {
+      background: #d9702a;
+    }
+
+    html.is-mobile .mobile-fab-save-dot {
+      flex: 0 0 auto;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #ffd166;
+      box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.4);
     }
 
     /* ノート内の上部バーをモバイルで見やすく（JSタッチ判定フォールバック） */

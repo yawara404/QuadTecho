@@ -369,5 +369,122 @@ function bootWithFetch(fetchImpl) {
   assert.equal(await hf3.state().probeFlaskOnce(), true, '再検出でサーバーを検知できる');
   assert.equal(hf3.state().isFlaskOnline.value, true, '再検出後に Flask同期 へ切り替わる');
 
-  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image & sticky sizing, sticky font size input & size reset, posts, likes, replies, persistence, failure recovery, history traversal, my stickers, login/logout, flask detection');
+  // ===== 未保存インジケータ ＆ キーボード操作（Delete・矢印・⌘S・⌘D・Esc） =====
+  boot(); await mounted();
+  state.currentTab.value = 'canvas';
+  assert.equal(state.isDirty.value, false, '手帳を開いた直後は保存済み扱い');
+  state.newStickyContent.value = 'キーボード操作テスト';
+  state.addSticky();
+  assert.equal(state.isDirty.value, true, '付箋を追加すると「未保存」になる');
+  await state.saveCurrentPage(false);
+  assert.equal(state.isDirty.value, false, '保存すると未保存が解消される');
+
+  // キーイベントのスタブ（preventDefault の呼び出しも検証できるようにする）
+  const keyEvent = (over = {}) => Object.assign({
+    key: 'ArrowRight', target: { tagName: 'BODY' },
+    ctrlKey: false, metaKey: false, altKey: false, shiftKey: false,
+    defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; }
+  }, over);
+
+  // 矢印キー：1px、Shift併用で10px
+  const moved = state.items.value[0];
+  state.selectedId.value = moved.id;
+  const baseX = moved.x, baseY = moved.y;
+  let ev = keyEvent({ key: 'ArrowRight' });
+  state.handleKeyDown(ev);
+  assert.equal(ev.defaultPrevented, true, '矢印キーの標準動作（スクロール）を止める');
+  assert.equal(moved.x, baseX + 1, '矢印キーで1px右へ微移動できる');
+  ev = keyEvent({ key: 'ArrowDown', shiftKey: true });
+  state.handleKeyDown(ev);
+  assert.equal(moved.y, baseY + 10, 'Shift+矢印で10px動く');
+  // ノートの外へは出ない（ドラッグと同じ下限20/70へクランプ）
+  moved.x = 25; moved.y = 70;
+  state.handleKeyDown(keyEvent({ key: 'ArrowLeft', shiftKey: true }));
+  state.handleKeyDown(keyEvent({ key: 'ArrowUp' }));
+  assert.equal(moved.x, 20, '左端は20pxで止まる（キー移動もノート内に収まる）');
+  assert.equal(moved.y, 70, '上端は70pxで止まる');
+  // 連続した微移動は1回のUndoでまとめて戻せる
+  state.undo();
+  assert.equal(state.items.value[0].x, baseX, '連続した微移動を1回のUndoで戻せる');
+  assert.equal(state.items.value[0].y, baseY, '縦位置も同じUndoで戻る');
+
+  // Delete / Backspace：選択中の付箋を剥がす（文字入力中は剥がさない）
+  const keepCount = state.items.value.length;
+  state.selectedId.value = state.items.value[0].id;
+  ev = keyEvent({ key: 'Delete' });
+  state.handleKeyDown(ev);
+  assert.equal(ev.defaultPrevented, true, 'Deleteの標準動作を止める');
+  assert.equal(state.items.value.length, keepCount - 1, 'Deleteで選択中の付箋を剥がせる');
+  assert.equal(state.selectedId.value, null, '剥がしたあとは選択が外れる');
+  state.selectedId.value = state.items.value[0].id;
+  state.handleKeyDown(keyEvent({ key: 'Backspace', target: { tagName: 'TEXTAREA' } }));
+  assert.equal(state.items.value.length, keepCount - 1, '文字入力中のBackspaceでは剥がさない');
+
+  // ⌘/Ctrl + D：複製、⌘/Ctrl + S：保存
+  ev = keyEvent({ key: 'd', ctrlKey: true });
+  state.handleKeyDown(ev);
+  assert.equal(ev.defaultPrevented, true, '⌘/Ctrl+D のブックマーク追加を止める');
+  assert.equal(state.items.value.length, keepCount, '⌘/Ctrl+D で選択中の付箋を複製できる');
+  assert.equal(state.isDirty.value, true, '複製すると未保存になる');
+  ev = keyEvent({ key: 's', ctrlKey: true });
+  state.handleKeyDown(ev);
+  assert.equal(ev.defaultPrevented, true, '⌘/Ctrl+S でブラウザの保存ダイアログを抑止する');
+  await Promise.resolve();
+  assert.equal(state.isDirty.value, false, '⌘/Ctrl+S で保存される');
+
+  // Esc：選択解除・モーダルやメニューを閉じる・入力欄のフォーカスを外す
+  state.selectedId.value = state.items.value[0].id;
+  state.showProfileModal.value = true;
+  state.mobileMenuOpen.value = true;
+  state.handleKeyDown(keyEvent({ key: 'Escape' }));
+  assert.equal(state.selectedId.value, null, 'Escで選択を解除できる');
+  assert.equal(state.showProfileModal.value, false, 'Escでモーダルを閉じられる');
+  assert.equal(state.mobileMenuOpen.value, false, 'Escでモバイルメニューを閉じられる');
+  let blurred = false;
+  state.handleKeyDown(keyEvent({ key: 'Escape', target: { tagName: 'INPUT', blur() { blurred = true; } } }));
+  assert.equal(blurred, true, '入力中のEscでフォーカスを外す');
+
+  // 未保存のまま離脱しようとしたときだけ確認を出す（beforeunload）
+  assert.equal(state.isDirty.value, false, 'Esc（選択解除）だけでは内容が変わらないので未保存にならない');
+  state.addSticky();
+  assert.equal(state.isDirty.value, true, '付箋を追加すると未保存に戻る');
+  const unloadEvent = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  assert.equal(state.handleBeforeUnload(unloadEvent), '', '未保存ならブラウザ標準の確認を出す');
+  assert.equal(unloadEvent.defaultPrevented, true);
+  await state.saveCurrentPage(false);
+  assert.equal(state.handleBeforeUnload({ preventDefault() { } }), undefined, '保存済みなら確認を出さない');
+
+  // ===== 日本語IMEの変換確定Enterで誤った確定・送信・削除をしない =====
+  let actionCalled = false;
+  const composing = { isComposing: true, keyCode: 229, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  state.submitOnEnter(composing, () => { actionCalled = true; });
+  assert.equal(actionCalled, false, 'IME変換中のEnterでは実行しない');
+  assert.equal(composing.defaultPrevented, false, '変換中のEnterは標準動作（変換確定）に任せる');
+  const settled = { isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  state.submitOnEnter(settled, () => { actionCalled = true; });
+  assert.equal(actionCalled, true, '変換が終わったEnterで実行する');
+  assert.equal(settled.defaultPrevented, true, '実行時は既定動作（改行など）を止める');
+  assert.equal(state.isComposingKey({ keyCode: 229 }), true, 'keyCode 229 も変換中として扱う');
+  // 変換中のキー入力ではキャンバスのショートカット（剥がす）を動かさない
+  const keepItems = state.items.value.length;
+  state.currentTab.value = 'canvas';
+  state.selectedId.value = state.items.value[0].id;
+  state.handleKeyDown({
+    key: 'Backspace', isComposing: true, keyCode: 229, target: { tagName: 'BODY' }, preventDefault() { }
+  });
+  assert.equal(state.items.value.length, keepItems, 'IME変換中はBackspaceで付箋を剥がさない');
+
+  // モーダルを開いている間は、背面のキャンバスをキーで動かさない
+  state.selectedId.value = state.items.value[0].id;
+  state.showNewPageModal.value = true;
+  const itemsWhileOpen = state.items.value.length;
+  const xWhileOpen = state.items.value[0].x;
+  state.handleKeyDown(keyEvent({ key: 'Delete' }));
+  state.handleKeyDown(keyEvent({ key: 'ArrowRight' }));
+  assert.equal(state.items.value.length, itemsWhileOpen, 'モーダル表示中はDeleteで剥がさない');
+  assert.equal(state.items.value[0].x, xWhileOpen, 'モーダル表示中は矢印キーで動かさない');
+  assert.equal(state.showNewPageModal.value, true, '単独キーではモーダルは閉じない（Escで閉じる）');
+
+  console.log('PASS: page switching, reload restoration, saved content, multi-page placement, pointer dragging, zoom limits, image & sticky sizing, sticky font size input & size reset, posts, likes, replies, persistence, failure recovery, history traversal, my stickers, login/logout, flask detection, unsaved indicator & keyboard shortcuts');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -41,7 +41,7 @@
 
   <!-- 注意: app.css / app.js の ?v= は変更時に必ず両方そろえて更新する
        （CDN/ブラウザのキャッシュで HTML と JS がずれると画面が描画できなくなる） -->
-  <link rel="stylesheet" href="./assets/app.css?v=20260925-resize-refit" />
+  <link rel="stylesheet" href="./assets/app.css?v=20260928-keyshorts-dirty" />
 </head>
 
 <body>
@@ -110,8 +110,10 @@
           <span style="font-size: 9px;">▼</span>
         </div>
 
-        <button v-if="currentTab === 'canvas'" class="btn btn-save header-save-btn" @click="saveCurrentPage">
-          <span>💾</span> ページ保存
+        <button v-if="currentTab === 'canvas'"
+          :class="['btn', 'btn-save', 'header-save-btn', { 'is-dirty': isDirty }]" @click="saveCurrentPage"
+          :title="isDirty ? '未保存の変更があります（⌘S / Ctrl+S でも保存できます）' : '保存済みです（⌘S / Ctrl+S でも保存できます）'">
+          <span>💾</span> {{ isDirty ? '未保存（保存する）' : 'ページ保存' }}
         </button>
       </div>
     </header>
@@ -479,9 +481,9 @@
                 <button class="ctrl-btn btn-xs" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
                 <button class="ctrl-btn btn-xs" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
                 <button class="ctrl-btn btn-xs" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
-                <button class="ctrl-btn btn-xs" @click="duplicateItem(activeItem)" title="付箋を複製">複製</button>
+                <button class="ctrl-btn btn-xs" @click="duplicateItem(activeItem)" title="付箋を複製（⌘D / Ctrl+D）">複製</button>
                 <button class="ctrl-btn btn-xs btn-danger-icon" @click="removeItem(activeItem.id)"
-                  title="剥がす">🗑️</button>
+                  title="剥がす（Delete キーでも剥がせます）">🗑️</button>
               </div>
               <div v-else class="quick-stickies-group">
                 <span class="ctrl-label-muted">付箋:</span>
@@ -556,7 +558,9 @@
             <div class="palette-box">
               <h3 class="palette-title">✏️ 付箋をつくる</h3>
               <textarea v-model="newStickyContent" class="note-textarea" rows="3"
-                placeholder="講義メモ、提出課題、日記..."></textarea>
+                placeholder="講義メモ、提出課題、日記...（⌘/Ctrl + Enter で貼る）"
+                @keydown.enter.ctrl="submitOnEnter($event, addSticky)"
+                @keydown.enter.meta="submitOnEnter($event, addSticky)"></textarea>
 
               <div style="font-size: 11px; color: #7f8c8d; margin-top: 6px;">付箋カラー:</div>
               <div class="color-swatches">
@@ -623,7 +627,7 @@
             <button class="mobile-item-btn" @click="bringToFront(activeItem)" title="最前面へ移動">前面</button>
             <button class="mobile-item-btn" @click="sendToBack(activeItem)" title="最背面へ移動">背面</button>
             <button class="mobile-item-btn" @click="resetItemRotation(activeItem)" title="水平に戻す">水平</button>
-            <button class="mobile-item-btn" @click="duplicateItem(activeItem)" title="複製">複製</button>
+            <button class="mobile-item-btn" @click="duplicateItem(activeItem)" title="複製（⌘D / Ctrl+D）">複製</button>
             <button class="mobile-item-btn mobile-item-danger" @click="removeItem(activeItem.id)"
               title="剥がす">🗑️</button>
           </div>
@@ -668,9 +672,11 @@
             </div>
           </div>
 
-          <!-- モバイル：編集画面のフローティング保存ボタン -->
-          <button class="mobile-fab-save" :class="{ 'is-raised': !!activeItem }" @click="saveCurrentPage"
-            title="このページを保存" aria-label="このページを保存">
+          <!-- モバイル：編集画面のフローティング保存ボタン（未保存のときは色と●で知らせる） -->
+          <button class="mobile-fab-save" :class="{ 'is-raised': !!activeItem, 'is-dirty': isDirty }"
+            @click="saveCurrentPage" :title="isDirty ? '未保存の変更があります（タップで保存）' : '保存済みです'"
+            :aria-label="isDirty ? '未保存の変更を保存' : 'このページを保存'">
+            <span v-if="isDirty" class="mobile-fab-save-dot" aria-hidden="true"></span>
             <span class="mobile-fab-save-icon">💾</span>
             <span class="mobile-fab-save-label">保存</span>
           </button>
@@ -680,7 +686,7 @@
             ref="deskRef" @dragover.prevent="onDeskDragOver" @drop.prevent="onDeskDrop">
             <!-- 手帳中央ステージ（画面全体の中央に配置 ＆ JSで自由移動） -->
             <div class="techo-stage" :style="{ transform: `translate(calc(-50% + ${stagePos.x}px), ${stagePos.y}px)` }">
-              <p class="desk-hint">タブを机へドラッグして並べる · ページの見出しで移動 · 背景をドラッグして見渡す</p>
+              <p class="desk-hint">タブを机へドラッグして並べる · ページの見出しで移動 · 背景をドラッグして見渡す · 付箋を選んで矢印キーで微調整</p>
               <div class="sheet-plane" ref="sheetPlaneRef" :style="{ transform: `scale(${zoomLevel})` }">
                 <!-- 大学ノート本体 -->
                 <div v-for="sheet in visibleSheets" :key="sheet.id"
@@ -734,7 +740,8 @@
                       </div>
                     </template>
                     <button v-if="currentPageId === sheet.id" class="remove-badge" @click.stop="removeItem(item.id)"
-                      @pointerdown.stop title="付箋・シールをはがす" aria-label="付箋・シールをはがす">×</button>
+                      @pointerdown.stop title="付箋・シールをはがす（Delete キーでも剥がせます）"
+                      aria-label="付箋・シールをはがす">×</button>
                   </div>
 
                   <!-- 空状態案内 -->
@@ -906,9 +913,12 @@
                 </div>
 
                 <input v-model="newBoardTitle" class="form-input" maxlength="100" aria-label="投稿タイトル" placeholder="タイトル"
-                  required />
+                  required @keydown.enter.ctrl="submitOnEnter($event, submitBoardPost)"
+                  @keydown.enter.meta="submitOnEnter($event, submitBoardPost)" />
                 <textarea v-model="newBoardContent" class="form-input" maxlength="2000" rows="3" aria-label="投稿本文"
-                  placeholder="近況、相談、手帳のアイデアなど、気軽に書いてみよう。" required></textarea>
+                  placeholder="近況、相談、手帳のアイデアなど、気軽に書いてみよう。（⌘/Ctrl + Enter で投稿）" required
+                  @keydown.enter.ctrl="submitOnEnter($event, submitBoardPost)"
+                  @keydown.enter.meta="submitOnEnter($event, submitBoardPost)"></textarea>
 
                 <!-- タグ・シールは畳んでおき、必要なときだけ開く -->
                 <button type="button" class="composer-options-toggle"
@@ -1098,7 +1108,9 @@
                   </div>
                   <form class="reply-form" @submit.prevent="submitBoardComment(post)">
                     <textarea v-model="replyDrafts[post.id]" maxlength="500" rows="2" class="form-input"
-                      aria-label="返信内容" placeholder="温かい返信を書く（500文字以内）..." required></textarea>
+                      aria-label="返信内容" placeholder="温かい返信を書く（500文字以内・⌘/Ctrl + Enter で送信）..." required
+                      @keydown.enter.ctrl="submitOnEnter($event, () => submitBoardComment(post))"
+                      @keydown.enter.meta="submitOnEnter($event, () => submitBoardComment(post))"></textarea>
                     <button class="btn btn-save"
                       :disabled="boardBusy || boardLoading || !(replyDrafts[post.id] || '').trim()">返信する</button>
                   </form>
@@ -1277,8 +1289,10 @@
 
               <form class="circle-chat-form" @submit.prevent="sendCircleMessage">
                 <textarea v-model="newCircleMessage" class="form-input" maxlength="500" rows="2"
-                  :placeholder="circleMemberOf(selectedCircle) ? 'メッセージを入力（500文字以内）' : '入部するとチャットに参加できます'"
-                  :disabled="!circleMemberOf(selectedCircle)" aria-label="メッセージ"></textarea>
+                  :placeholder="circleMemberOf(selectedCircle) ? 'メッセージを入力（500文字以内・⌘/Ctrl + Enter で送信）' : '入部するとチャットに参加できます'"
+                  :disabled="!circleMemberOf(selectedCircle)" aria-label="メッセージ"
+                  @keydown.enter.ctrl="submitOnEnter($event, sendCircleMessage)"
+                  @keydown.enter.meta="submitOnEnter($event, sendCircleMessage)"></textarea>
                 <button class="btn btn-save"
                   :disabled="circleChatBusy || !circleMemberOf(selectedCircle) || !newCircleMessage.trim()">
                   {{ circleChatBusy ? '送信中…' : '送信' }}
@@ -1410,7 +1424,7 @@
         <p class="account-section-title">ユーザーIDでログイン</p>
         <div class="account-login-row">
           <input v-model="loginUsername" class="form-input" placeholder="ユーザーID または ニックネーム" aria-label="ユーザーIDまたはニックネーム"
-            @keyup.enter="loginByUsername" />
+            @keydown.enter="submitOnEnter($event, loginByUsername)" />
           <button class="btn btn-save" @click="loginByUsername">ログイン</button>
         </div>
 
@@ -1481,11 +1495,13 @@
         <p class="modal-hint">作成するとそのままログインします。ユーザーIDはログインに使います。</p>
         <div class="form-group">
           <label>ユーザーID（ログインID）:</label>
-          <input v-model="newUserForm.username" placeholder="例: taro123" class="form-input" />
+          <input v-model="newUserForm.username" placeholder="例: taro123" class="form-input"
+            @keydown.enter="submitOnEnter($event, createNewUser)" />
         </div>
         <div class="form-group">
           <label>表示名（ニックネーム）:</label>
-          <input v-model="newUserForm.display_name" placeholder="例: 山田太郎" class="form-input" />
+          <input v-model="newUserForm.display_name" placeholder="例: 山田太郎" class="form-input"
+            @keydown.enter="submitOnEnter($event, createNewUser)" />
         </div>
         <div class="form-group">
           <label>所属サークル:</label>
@@ -1508,7 +1524,8 @@
         <h3 class="modal-title">📑 新しい手帳・ノートを作成</h3>
         <div class="form-group">
           <label>手帳のタイトル:</label>
-          <input v-model="newPageTitle" placeholder="例: 5月の予定、試験勉強まとめ" class="form-input" autofocus />
+          <input v-model="newPageTitle" placeholder="例: 5月の予定、試験勉強まとめ" class="form-input" autofocus
+            @keydown.enter="submitOnEnter($event, confirmCreatePage)" />
         </div>
         <div class="form-group">
           <label>保存先フォルダ:</label>
@@ -1553,7 +1570,8 @@
         <h3 class="modal-title">📁 新しいフォルダを作成</h3>
         <div class="form-group">
           <label>フォルダ名:</label>
-          <input v-model="newFolderName" placeholder="例: 講義ノート、就活、趣味" class="form-input" autofocus />
+          <input v-model="newFolderName" placeholder="例: 講義ノート、就活、趣味" class="form-input" autofocus
+            @keydown.enter="submitOnEnter($event, confirmCreateFolder)" />
         </div>
         <div class="modal-actions">
           <button class="btn" style="background: #ccc;" @click="showNewFolderModal = false">キャンセル</button>
@@ -1568,7 +1586,8 @@
         <h3 class="modal-title">✏️ フォルダ名の変更</h3>
         <div class="form-group">
           <label>新しいフォルダ名:</label>
-          <input v-model="renameFolderName" class="form-input" autofocus />
+          <input v-model="renameFolderName" class="form-input" autofocus
+            @keydown.enter="submitOnEnter($event, confirmRenameFolder)" />
         </div>
         <div class="modal-actions">
           <button class="btn" style="background: #ccc;" @click="showRenameFolderModal = false">キャンセル</button>
@@ -1583,7 +1602,8 @@
         <h3 class="modal-title">✏️ 手帳タイトルの変更</h3>
         <div class="form-group">
           <label>新しいタイトル:</label>
-          <input v-model="renameTitle" class="form-input" autofocus />
+          <input v-model="renameTitle" class="form-input" autofocus
+            @keydown.enter="submitOnEnter($event, confirmRenamePage)" />
         </div>
         <p class="modal-note">タブの × は「机から閉じるだけ」で、ページやメモは削除されません。</p>
         <div class="modal-actions">
@@ -1600,11 +1620,14 @@
       <div class="modal-dialog">
         <h3 class="modal-title">📌 掲示板に付箋を貼る</h3>
         <div class="form-group">
-          <input v-model="newBoardTitle" placeholder="タイトル（例: 課題の締切、週末の予定）" class="form-input" />
+          <input v-model="newBoardTitle" placeholder="タイトル（例: 課題の締切、週末の予定）" class="form-input"
+            @keydown.enter.ctrl="submitOnEnter($event, submitBoardPost)"
+            @keydown.enter.meta="submitOnEnter($event, submitBoardPost)" />
         </div>
         <div class="form-group">
-          <textarea v-model="newBoardContent" placeholder="連絡内容..." rows="4" class="form-input"
-            style="resize: vertical;"></textarea>
+          <textarea v-model="newBoardContent" placeholder="連絡内容...（⌘/Ctrl + Enter で投稿）" rows="4" class="form-input"
+            style="resize: vertical;" @keydown.enter.ctrl="submitOnEnter($event, submitBoardPost)"
+            @keydown.enter.meta="submitOnEnter($event, submitBoardPost)"></textarea>
         </div>
         <div class="modal-actions">
           <button class="btn" style="background: #ccc;" @click="showNewBoardModal = false">キャンセル</button>
@@ -1614,7 +1637,7 @@
     </div>
   </div>
 
-  <script src="./assets/app.js?v=20260925-resize-refit"></script>
+  <script src="./assets/app.js?v=20260928-keyshorts-dirty"></script>
 </body>
 
 </html>
