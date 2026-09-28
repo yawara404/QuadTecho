@@ -118,6 +118,12 @@ node tests/frontend.cjs
 - Cloudflare の **Bot Fight Mode** が有効だと Googlebot が 403 になり、Search Console で「取得できません」になります。Security → Bots で Googlebot を許可するか、Bot Fight Mode を無効にしてください。
 - サーバー停止中は公開URLへアクセスできないため、確認・インデックス登録はサーバー起動中に行ってください。
 
+### 5. サイトアイコン（favicon）
+- サイトアイコンは **OGP画像 `assets/ogp.png` 内のアプリアイコン部分を正方形に切り出して生成**しています（バナー(1200×630)をそのまま使うと 16px のタブでは潰れるため）。
+- 生成物: `assets/icons/` に `favicon-16/32/48/96.png`・`icon-144/192/512.png`・`apple-touch-icon.png`(180)・`icon-maskable-512.png`(Android のマスク対応)
+- `index.html` の `<link rel="icon">` で 48 の倍数（Google が優先して拾うサイズ）を指定し、Android/PWA 用に `site.webmanifest` も配置しています。
+- 再生成（OGP画像を差し替えたとき）: `python3 tools/make_site_icons.py`（Pillow や ImageMagick が無くても動きます）
+
 ## 注意
 
 - 本リポジトリはオープンソースではありません。セットアップ手順・内部運用情報は含めていません。
