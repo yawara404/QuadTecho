@@ -66,6 +66,9 @@ function cacheBustBuiltAssets() {
       return html
         .replaceAll(`${JS_OUTPUT}"`, `${JS_OUTPUT}?v=${version}"`)
         .replaceAll(`${CSS_OUTPUT}"`, `${CSS_OUTPUT}?v=${version}"`)
+        // favicon と webmanifest も、差し替えたときに古いものが使われ続けないようにする
+        .replace(/(assets\/icons\/[\w.-]+\.png)"/g, `$1?v=${version}"`)
+        .replaceAll('site.webmanifest"', `site.webmanifest?v=${version}"`)
     },
   }
 }
