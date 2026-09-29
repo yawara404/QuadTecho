@@ -2,12 +2,22 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const Vue = require('../frontend/node_modules/vue');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../assets/app.js'), 'utf8');
+// 画面のソースは Vite プロジェクト側（frontend/src/app.js）。ビルド成果物ではなく
+// ソースそのものを評価するため、ES モジュールの import / export だけを vm 用に置き換える。
+const source = fs.readFileSync(require('node:path').join(__dirname, '../frontend/src/app.js'), 'utf8')
+  .replace(/^import \{([^}]+)\} from 'vue';$/m, (_match, names) => `const {${names}} = Vue;`)
+  .replace(/^export function /gm, 'function ')
+  .replace(/^export const /gm, 'const ')
+  + '\nglobalThis.__qt_appOptions = appOptions;\n';
+// main.js と同じ順序（createApp → mount）で setup を実行し、戻り値を受け取る
+function mountQuadTecho(context) {
+  context.Vue.createApp(context.__qt_appOptions).mount('#app');
+}
 const storage = () => { const values = new Map(); return { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, String(v)) }; };
 const localStorage = storage(), sessionStorage = storage();
 let mounted, state;
 function boot() {
-  vm.runInNewContext(source, {
+  const context = {
     Vue: { ...Vue, onMounted: fn => { mounted = fn; }, createApp: options => ({ config: {}, mount() { state = options.setup(); } }) },
     localStorage, sessionStorage, window: { addEventListener() {}, removeEventListener() {}, location: { hash: '' } },
     history: { replaceState() {} },
@@ -15,7 +25,9 @@ function boot() {
     URL: { createObjectURL: () => 'blob:test-image', revokeObjectURL() {} },
     Image: class { naturalWidth = 480; naturalHeight = 240; set src(value) { Promise.resolve().then(() => this.onload()); } },
     document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
-  });
+  };
+  vm.runInNewContext(source, context);
+  mountQuadTecho(context);
 }
 // 履歴（pushState/popstate）を検証するための独立ブート
 function bootWithHistory(initialHash) {  const calls = [];
@@ -27,7 +39,7 @@ function bootWithHistory(initialHash) {  const calls = [];
     back() { calls.push({ type: 'back' }); }
   };
   let localMounted, localState;
-  vm.runInNewContext(source, {
+  const context = {
     Vue: { ...Vue, onMounted: fn => { localMounted = fn; }, createApp: options => ({ config: {}, mount() { localState = options.setup(); } }) },
     localStorage: storage(), sessionStorage: storage(),
     window: {
@@ -40,13 +52,16 @@ function bootWithHistory(initialHash) {  const calls = [];
     URL: { createObjectURL: () => 'blob:test-image', revokeObjectURL() {} },
     Image: class { naturalWidth = 480; naturalHeight = 240; set src(value) { Promise.resolve().then(() => this.onload()); } },
     document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
-  });
+  };
+  vm.runInNewContext(source, context);
+  mountQuadTecho(context);
   return { calls, listeners, location, state: () => localState, mounted: localMounted };
 }
+
 // Flask接続検出を検証するための独立ブート（fetchを差し替え可能）
 function bootWithFetch(fetchImpl) {
   let localMounted, localState;
-  vm.runInNewContext(source, {
+  const context = {
     Vue: { ...Vue, onMounted: fn => { localMounted = fn; }, createApp: options => ({ config: {}, mount() { localState = options.setup(); } }) },
     localStorage: storage(), sessionStorage: storage(),
     window: {
@@ -58,7 +73,9 @@ function bootWithFetch(fetchImpl) {
     URL: { createObjectURL: () => 'blob:test-image', revokeObjectURL() {} },
     Image: class { naturalWidth = 480; naturalHeight = 240; set src(value) { Promise.resolve().then(() => this.onload()); } },
     document: { createElement: () => ({ width:0, height:0, getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/webp;base64,dGVzdA==' }) }
-  });
+  };
+  vm.runInNewContext(source, context);
+  mountQuadTecho(context);
   return { state: () => localState, mounted: localMounted };
 }
 (async () => {

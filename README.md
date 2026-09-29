@@ -1,11 +1,25 @@
 # QuadTecho（クアッド・テチョウ）
 
-> **お試し公開URL**: https://music.wawa-app.me/QuadTecho/
+[![公開サイト](https://img.shields.io/badge/site-plan.wawa--app.me%2FQuadTecho-22313f?style=flat-square)](https://plan.wawa-app.me/QuadTecho/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org/)
+[![Vite 5](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
+[![Flask](https://img.shields.io/badge/Flask-3-000000?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![SQLite](https://img.shields.io/badge/SQLite-DB-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org/)
+
+> **お試し公開URL**: https://plan.wawa-app.me/QuadTecho/
 > （Cloudflare Tunnelによる公開のため、サーバー停止中はアクセスできません）
 
 付箋やシールで自由にデコレーションできる、シンプルで使いやすい**学生風手帳サイト**です。
 
 > **本リポジトリについて**: 開発成果物の紹介（サイト説明・技術説明）を目的としており、オープンソースとしてのセットアップ手順の提供・再利用・再配布は想定していません。
+
+### 🧱 技術構成
+
+| 層 | 使用技術 | 説明 |
+|---|---|---|
+| 画面 | **Vue 3 + Vite 5**（`frontend/`） | `frontend/src/App.vue`（テンプレート）と `frontend/src/app.js`（ロジック）、`frontend/src/styles/app.css`（スタイル）。ビルドするとリポジトリ直下の `index.html` / `assets/app.js` / `assets/app.css` を生成する |
+| サーバー | **Flask + Waitress + SQLite**（`flask_server/`） | API に加えて、ビルド済みの画面（`/QuadTecho/`）と画像・CSS・JS（`assets/`）も配信する |
+| 公開 | **Cloudflare Tunnel**（`tunnel.sh`） | `https://plan.wawa-app.me/QuadTecho/` を 127.0.0.1:5002 へ転送する |
 
 ---
 
@@ -58,34 +72,42 @@
 - ページ移動前に編集を保存し、連続クリックによる保存・読み込みの競合を防止します。
 - 同じブラウザタブを再読み込みしても、表示タブとユーザーごとの選択ページを復元します。
 
-### 4. 🐍 本番用WSGIサーバー（Waitress / Flask）
+### 4. 🐍 本番用サーバー（Flask + Waitress / 画面配信も担当）
 - Python + Waitress + Flask + SQLite による高速・安定稼働。
+- **画面（Vite のビルド成果物）もこの Flask が配信する**ため、Apache など別の Web サーバーは不要。`https://plan.wawa-app.me/QuadTecho/` はトンネルから 1 か所（127.0.0.1:5002）だけを見ればよい。
+- 画面側のソースは `frontend/`（Vite）にあり、`npm run build` でリポジトリ直下の `index.html` / `assets/app.js` / `assets/app.css` を更新する。
 - ポート競合自動回避（5000使用時は自動で5001へシフト）を内蔵。
 
 ---
 
 ## 🚀 起動方法
 
-### ① サーバーの起動 (バックエンド)
 ```bash
-python3 flask_server/app.py
+# ① 画面のビルド（ソースを変更したとき）
+cd frontend && npm install && npm run build   # 開発中は npm run dev（http://127.0.0.1:5173）
+                                              # ビルド先はリポジトリ直下（index.html / assets/app.*）
+
+# ② サーバーの起動（画面配信 + API）
+./start.sh                                    # または python3 flask_server/app.py
+                                              # → http://127.0.0.1:5002/QuadTecho/
+
+# ③ 公開（Cloudflare Tunnel: https://plan.wawa-app.me/QuadTecho/）
+./tunnel.sh start                             # 状態確認: ./tunnel.sh status / 停止: ./tunnel.sh stop
 ```
-（または `./start.sh`）
-> 自動的に空きポート（http://127.0.0.1:5000 など）で起動し、SQLiteデータベースに保存されます。
 
-### ② Live Server での起動 (フロントエンド)
-1. VS Codeで `index.html` を右クリック。
-2. **「Open with Live Server」** を選択します。
-3. ブラウザで **`http://127.0.0.1:5500/index.html`** が開き、ホーム画面（手帳一覧）からスタートできます！
-
+> `./start.sh` は自動的に空きポート（既定は 5002）で起動し、SQLite データベースに保存します。
+> 公開トンネルは 5002 を見ているため、公開する場合は 5002 で起動してください（`QUADTECHO_PORT` で変更可）。
 
 ## 更新後の反映と確認
-掲示板APIを更新した場合はFlaskサーバーを再起動してください。新しいテーブルは起動時に自動作成されます。Live Serverも設定変更後は再起動し、DB更新を監視対象から除外してください。
+
+- 画面（`frontend/`）を変更したときは `npm run build` でビルドし直します（`index.html` の `?v=` はビルド時刻に自動更新され、ブラウザキャッシュのずれを防ぎます）。
+- 掲示板APIを更新した場合はFlaskサーバーを再起動してください。新しいテーブルは起動時に自動作成されます。
 
 ```bash
 python3 -m unittest discover -s tests
-node tests/frontend.cjs
+node tests/frontend.cjs      # Vite 側のソース（frontend/src/app.js）を直接検証する
 ```
+
 テストは一時DBとメモリ内ストレージを使い、実データを変更しません。
 
 ## 🔍 Google Search Console 対応
@@ -93,35 +115,36 @@ node tests/frontend.cjs
 検索エンジンへの登録・クロール設定は次のとおりです。
 
 ### 1. 所有権確認（プロパティ登録）
-1. [Google Search Console](https://search.google.com/search-console) で「**URL プレフィックス**」プロパティとして `https://music.wawa-app.me/QuadTecho/` を登録します。
-2. 確認方法は「**HTML タグ**」を使用し、発行された値を `index.html` の
-   `<meta name="google-site-verification" content="..." />` に設定します（**設定済み**。プロパティを作り直した場合のみ差し替え）。
-3. 公開してから画面の「確認」を押します（HTML ファイル方式を使う場合は、発行された `google<ID>.html` を `index.html` と同じディレクトリへ置いてください）。
+1. [Google Search Console](https://search.google.com/search-console) で「**URL プレフィックス**」プロパティとして `https://plan.wawa-app.me/QuadTecho/` を登録します。
+2. 確認方法は「**HTML タグ**」を使用し、発行された値を `frontend/index.html` の
+   `<meta name="google-site-verification" content="..." />` に設定します（ビルドすると直下の `index.html` へ反映されます）。
+3. 公開してから画面の「確認」を押します。
 
-> `index.html` の所有権確認タグ・`robots.txt`・`sitemap.xml`・構造化データ（JSON-LD）・サイトアイコンは**すべて設定済み**です。
+> **ホスト変更時の注意**: 所有権確認トークンはプロパティ（ホスト）ごとに発行されるため、`music.wawa-app.me` から `plan.wawa-app.me` へ変更したときは、Search Console で新しいプロパティを登録して発行された値へ差し替えてください。
 
 ### 2. クロール設定ファイル
 | ファイル | 公開先 | 用途 |
 |---|---|---|
-| `sitemap.xml` | https://music.wawa-app.me/QuadTecho/sitemap.xml | Search Console の「サイトマップ」で送信 |
-| `robots.txt` | https://music.wawa-app.me/QuadTecho/robots.txt | クロール制御（API を除外、サイトマップを案内） |
+| `sitemap.xml` | https://plan.wawa-app.me/QuadTecho/sitemap.xml | Search Console の「サイトマップ」で送信 |
+| `robots.txt` | https://plan.wawa-app.me/robots.txt | クロール制御（API を除外、サイトマップを案内） |
 
-- **robots.txt は「ホスト直下」で配信された場合だけ Google に読まれます。** Google が見るのは `https://music.wawa-app.me/robots.txt` のみで、`/QuadTecho/robots.txt` は参照されません。本サイトはホスト直下にもこのファイルが配信されるよう配置してあるため、そのまま有効です（別ホスト構成にする場合はホスト直下へ同じ内容をコピーしてください。未設置の場合は「クロール全許可」として扱われます）。
-- 配置後は `https://music.wawa-app.me/robots.txt` と `https://music.wawa-app.me/QuadTecho/sitemap.xml` をブラウザで開き、内容が表示されるか確認してください。
+- **robots.txt は「ホスト直下」で配信された場合だけ Google に読まれます。** Google が見るのは `https://plan.wawa-app.me/robots.txt` のみで、`/QuadTecho/robots.txt` は参照されません。本サイトは Flask（サーバー）がホスト直下のパスでも `robots.txt` / `sitemap.xml` を返すようにしてあるため、そのまま有効です。
+- 配置後は `https://plan.wawa-app.me/robots.txt` と `https://plan.wawa-app.me/QuadTecho/sitemap.xml` をブラウザで開き、内容が表示されるか確認してください。
 
 ### 3. インデックスの仕様（把握しておく点）
-- 画面の切り替えは `#home` / `#canvas` / `#board` などの**ハッシュ**で行うため、Google が索引するのは `https://music.wawa-app.me/QuadTecho/` の**1件のみ**です。各タブは独立したページとして索引されません（sitemap も1件）。
+- 画面の切り替えは `#home` / `#canvas` / `#board` などの**ハッシュ**で行うため、Google が索引するのは `https://plan.wawa-app.me/QuadTecho/` の**1件のみ**です。各タブは独立したページとして索引されません（sitemap も1件）。
 - 本文は JavaScript で描画されるため、`<noscript>` に説明文を、`<head>` に description・canonical・OGP・JSON-LD を用意しています。
 - 変更を公開したら、Search Console の「**URL 検査**」→「**インデックス登録をリクエスト**」で再クロールを促せます。
 
 ### 4. 公開（Cloudflare Tunnel）側の確認
+- 公開は `./tunnel.sh start`（Cloudflare Tunnel `quadtecho` → 127.0.0.1:5002）が担当します。状態は `./tunnel.sh status` で確認できます。
 - Cloudflare の **Bot Fight Mode** が有効だと Googlebot が 403 になり、Search Console で「取得できません」になります。Security → Bots で Googlebot を許可するか、Bot Fight Mode を無効にしてください。
-- サーバー停止中は公開URLへアクセスできないため、確認・インデックス登録はサーバー起動中に行ってください。
+- サーバー（`./start.sh`）やトンネルが停止中は公開URLへアクセスできないため、確認・インデックス登録は稼働中に行ってください。
 
 ### 5. サイトアイコン（favicon）
 - サイトアイコンは **OGP画像 `assets/ogp.png` 内のアプリアイコン部分を正方形に切り出して生成**しています（バナー(1200×630)をそのまま使うと 16px のタブでは潰れるため）。
 - 生成物: `assets/icons/` に `favicon-16/32/48/96.png`・`icon-144/192/512.png`・`apple-touch-icon.png`(180)・`icon-maskable-512.png`(Android のマスク対応)
-- `index.html` の `<link rel="icon">` で 48 の倍数（Google が優先して拾うサイズ）を指定し、Android/PWA 用に `site.webmanifest` も配置しています。
+- `frontend/index.html` の `<link rel="icon">` で 48 の倍数（Google が優先して拾うサイズ）を指定し、Android/PWA 用に `site.webmanifest` も配置しています（ビルドすると直下の `index.html` へ反映されます）。
 - 再生成（OGP画像を差し替えたとき）: `python3 tools/make_site_icons.py`（Pillow や ImageMagick が無くても動きます）
 
 ## 注意

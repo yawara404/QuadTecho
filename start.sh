@@ -1,8 +1,12 @@
 #!/bin/bash
-# ./start.sh: QuadTecho Flask バックエンドの起動
+# ./start.sh: QuadTecho サーバーの起動（Flask = 画面配信 + API）
 # bash / zsh のどちらからでも実行できます（source にも対応）。
 # 二重起動するとポートと SQLite のロックを取り合うため、
 # 先に /api/health で稼働中のサーバーを探してあればそのURLを知らせて終了する。
+#
+# 画面（Vite のビルド成果物）も Flask が配信するため、Web サーバーの起動は不要。
+#   http://127.0.0.1:5002/QuadTecho/   （ローカル確認）
+# 公開URL https://plan.wawa-app.me/QuadTecho/ は別途 ./tunnel.sh start で開始する。
 
 # --- このスクリプト自身の場所を bash / zsh 両対応で解決する ---
 if [ -n "${BASH_VERSION:-}" ]; then
@@ -58,7 +62,8 @@ PY
     if [ -n "$FOUND_URL" ]; then
         echo "QuadTecho サーバーは既に起動しています: $FOUND_URL"
         if [ "$FOUND_URL" != "http://127.0.0.1:5002" ]; then
-            echo "⚠️  公開URL用の Apache は 5002 へ転送しています。このままだと /QuadTecho/api/ が 503 になります。"
+            echo "⚠️  公開トンネル（Cloudflare Tunnel: plan.wawa-app.me）は 5002 へ転送しています。"
+            echo "    このままだと https://plan.wawa-app.me/QuadTecho/ にアクセスできません。"
             echo "    一度停止してから ./start.sh を再実行してください（既定で 5002 を使用します）。"
         fi
         echo "二重起動を防ぐため、このまま終了します。再起動はそのプロセスを止めてから実行してください。"

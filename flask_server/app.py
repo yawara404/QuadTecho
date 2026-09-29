@@ -13,7 +13,7 @@ import uuid
 import sqlite3
 import unicodedata
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, redirect, send_from_directory
 from flask_cors import CORS
 
 
@@ -57,6 +57,40 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
+
+# ===== 画面（Vite のビルド成果物）の配信設定 =====
+# 公開ディレクトリはリポジトリ直下で、
+#   npm run build  →  直下の index.html / assets/app.js / assets/app.css を更新する。
+# 公開URL https://plan.wawa-app.me/QuadTecho/ は Apache を挟まずこの Flask が受けるため、
+# 公開トンネル（cloudflared）は 127.0.0.1:5002 の 1 か所だけを見ればよい。
+# 配信するのは 画面（/ ・ /index.html）・検索エンジン向けファイル
+# （/robots.txt ・ /sitemap.xml ・ /site.webmanifest）・画像や CSS/JS（/assets/ 配下）だけ。
+# README・DB・ソース（*.py など）は配信しない（パスを明示しているので取得できない）。
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+class QuadTechoPathPrefixMiddleware:
+    """/QuadTecho 配下のリクエストを、接頭辞なしのパスへ写像するミドルウェア。
+
+    Apache の「Alias /QuadTecho」と「ProxyPass /QuadTecho/api/」を Flask 単体で再現する。
+    これにより、画面の相対URL（./assets/app.js → /QuadTecho/assets/app.js）も、
+    API（/QuadTecho/api/...）も同じ規則で解決でき、接頭辞の有無どちらでも動く
+    （接頭辞なし＝サブドメイン直下で受けた場合はそのままのパスで処理する）。
+    """
+
+    def __init__(self, wsgi_app, prefix="/QuadTecho"):
+        self.wsgi_app = wsgi_app
+        self.prefix = prefix
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == self.prefix or path.startswith(self.prefix + "/"):
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + self.prefix
+            environ["PATH_INFO"] = path[len(self.prefix):] or "/"
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = QuadTechoPathPrefixMiddleware(app.wsgi_app)
 
 # サーバー起動時にDB初期化
 init_db()
@@ -1177,6 +1211,38 @@ def upload_image():
 def serve_upload(filename: str):
     """アップロードされた画像ファイルを配信"""
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+# ===== 画面（Vite のビルド成果物）の配信 =====
+# npm run build の出力（リポジトリ直下の index.html・assets/app.css・assets/app.js）を返す。
+@app.route("/")
+def serve_app_index():
+    """画面のトップ。接頭辞なしで来たときは、相対URLがずれないよう /QuadTecho/ へ寄せる。"""
+    if not request.script_root:
+        return redirect("/QuadTecho/", code=301)
+    return send_from_directory(REPO_ROOT, "index.html")
+
+@app.route("/index.html")
+def serve_app_index_file():
+    """index.html を直接指定された場合（接頭辞の有無どちらでも）。"""
+    return send_from_directory(REPO_ROOT, "index.html")
+
+@app.route("/robots.txt")
+def serve_robots_txt():
+    """Google が読むのはホスト直下の robots.txt だけなので、ホスト直下のパスで返す。"""
+    return send_from_directory(REPO_ROOT, "robots.txt")
+
+@app.route("/sitemap.xml")
+def serve_sitemap_xml():
+    return send_from_directory(REPO_ROOT, "sitemap.xml")
+
+@app.route("/site.webmanifest")
+def serve_site_webmanifest():
+    return send_from_directory(REPO_ROOT, "site.webmanifest")
+
+@app.route("/assets/<path:filename>")
+def serve_app_asset(filename: str):
+    """画面の画像・CSS・JS（assets/ 配下のみ）。send_from_directory が .. を弾く。"""
+    return send_from_directory(os.path.join(REPO_ROOT, "assets"), filename)
 
 @app.route("/api/health", methods=["GET"])
 def health():
