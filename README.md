@@ -143,9 +143,10 @@ node tests/frontend.cjs      # Vite 側のソース（frontend/src/app.js）を�
 
 ### 5. サイトアイコン（favicon）
 - サイトアイコンは **OGP画像 `assets/ogp.png` 内のアプリアイコン部分を正方形に切り出して生成**しています（バナー(1200×630)をそのまま使うと 16px のタブでは潰れるため）。
+- **角丸は旧 favicon（`assets/quadtecho-mark.svg` の `rx=17` / viewBox 64）と同じ比率**で、四隅は透明にしています（タブで四角く見えないようにするため）。`apple-touch-icon` と Android のマスク対応アイコンは、OS 側が自前でマスクするので正方形のまま出力します。
 - 生成物: `assets/icons/` に `favicon-16/32/48/96.png`・`icon-144/192/512.png`・`apple-touch-icon.png`(180)・`icon-maskable-512.png`(Android のマスク対応)
 - `frontend/index.html` の `<link rel="icon">` で 48 の倍数（Google が優先して拾うサイズ）を指定し、Android/PWA 用に `site.webmanifest` も配置しています（ビルドすると直下の `index.html` へ反映されます）。
-- 再生成（OGP画像を差し替えたとき）: `python3 tools/make_site_icons.py`（Pillow や ImageMagick が無くても動きます）
+- 再生成（OGP画像や角丸を変えたとき）: `python3 tools/make_site_icons.py`（Pillow や ImageMagick が無くても動きます）
 
 ## 注意
 

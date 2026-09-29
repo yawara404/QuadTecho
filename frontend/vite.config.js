@@ -100,6 +100,9 @@ export default defineConfig(({ command }) => {
     },
 
     server: {
+      // 他の道具（Flask・curl・トンネル）と同じく IPv4 の 127.0.0.1 で受ける
+      // （既定の localhost は macOS で [::1] のみを掴み、127.0.0.1 で接続できないため）
+      host: '127.0.0.1',
       port: 5173,
       proxy: {
         '/api': { target: API_ORIGIN, changeOrigin: true },

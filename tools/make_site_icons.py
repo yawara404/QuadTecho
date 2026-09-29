@@ -3,6 +3,8 @@
 
 OGP画像(1200x630 のバナー)をそのままファビコンにすると 16px では潰れてしまうため、
 バナー内のアプリアイコン（薄緑の角丸タイル）を正方形に切り出して各サイズへ展開する。
+favicon と PWA(any) アイコンは、旧 favicon（assets/quadtecho-mark.svg の rect rx=17 /
+viewBox 64）と同じ比率で四隅を丸め、外側を透明にする。
 Pillow や ImageMagick が無い環境でも動くよう、PNG のデコード/クロップ/リサイズ/
 エンコードは標準ライブラリ（zlib / struct / math）だけで実装している。
 
@@ -24,6 +26,13 @@ LARGE_SIZES = (144, 192, 512)
 APPLE_TOUCH_SIZE = 180
 # アイコンタイル（左上のアプリアイコン）を探す範囲
 TILE_WINDOW = (60, 60, 220, 200)
+# アイコンの角丸。旧 favicon（assets/quadtecho-mark.svg の rect rx=17 / viewBox 64）と同じ比率にそろえる。
+# 0 にすると角丸なし（旧来の四角いアイコン）になる。
+ICON_CORNER_RATIO = 17 / 64
+# OGP画像側の背景（薄いクリーム色）。切り出し正方形の四隅に残るこの色を透明に抜いて、
+# 「角丸タイル」だけが残るようにする（タイル自身の角丸と二重にならないようにするため）。
+OGP_BACKGROUND = (241, 234, 221)
+BACKGROUND_TOLERANCE = 10
 
 
 def load_png(path):
@@ -174,6 +183,48 @@ def resize(img, dw, dh):
     return {'w': dw, 'h': dh, 'px': out}
 
 
+def _inside_rounded_rect(x, y, w, h, radius):
+    """点 (x, y) が角丸四角形の内側か（四隅は半径 radius の円弧で判定する）"""
+    cx = min(max(x, radius), w - radius)
+    cy = min(max(y, radius), h - radius)
+    dx, dy = x - cx, y - cy
+    return dx * dx + dy * dy <= radius * radius
+
+
+def round_corners(img, radius_ratio=ICON_CORNER_RATIO, samples=4):
+    """四隅を丸く抜き、切り出しに残った OGP の背景色も透明にする（favicon 用）。
+
+    - 角丸は旧 favicon（assets/quadtecho-mark.svg の rx=17 / viewBox 64）と同じ比率。
+    - 境界は 4x4 サンプリングの被覆率からアルファを作り、ギザギザを抑える。
+    - 正方形で切り出した四隅には「タイル自身の角丸の外側（OGPの背景色）」が残るため、
+      それを透明にして、角丸が二重に見えないようにする。
+       タイル #EAF2E6 は g > r、背景 #F1EADD は r > g なので、r > g を条件にすると
+      タイルの薄緑を消さずに背景だけを抜ける。
+    """
+    w, h, px = img['w'], img['h'], img['px']
+    radius = min(w, h) * radius_ratio
+    bg = OGP_BACKGROUND
+    tol = BACKGROUND_TOLERANCE
+    out = bytearray(px)
+    for y in range(h):
+        for x in range(w):
+            o = (y * w + x) * 4
+            r, g, b = px[o], px[o + 1], px[o + 2]
+            if (r - g >= 4 and abs(r - bg[0]) <= tol and abs(g - bg[1]) <= tol and abs(b - bg[2]) <= tol):
+                out[o + 3] = 0  # OGP の背景色（タイルの外側）→ 透明
+                continue
+            inside = 0
+            for sy in range(samples):
+                for sx in range(samples):
+                    if _inside_rounded_rect(x + (sx + 0.5) / samples,
+                                            y + (sy + 0.5) / samples, w, h, radius):
+                        inside += 1
+            coverage = inside / (samples * samples)
+            if coverage < 1.0:
+                out[o + 3] = min(out[o + 3], int(round(255 * coverage)))
+    return {'w': w, 'h': h, 'px': out}
+
+
 def save_png(path, img):
     w, h, px = img['w'], img['h'], img['px']
     opaque = all(px[i] == 255 for i in range(3, len(px), 4))
@@ -279,14 +330,16 @@ def main():
     print('切り出し: %dx%d (x=%d, y=%d)' % (side, side, x, y))
 
     written = []
+    # favicon・PWA(any) は角丸にして透明の四隅にする（旧 quadtecho-mark.svg と同じ角丸）
     for size_px in FAVICON_SIZES:
         written.append(('favicon-%d.png' % size_px,
                         save_png(str(outdir / ('favicon-%d.png' % size_px)),
-                                 resize(base, size_px, size_px))))
+                                 round_corners(resize(base, size_px, size_px)))))
     for size_px in LARGE_SIZES:
         written.append(('icon-%d.png' % size_px,
                         save_png(str(outdir / ('icon-%d.png' % size_px)),
-                                 resize(base, size_px, size_px))))
+                                 round_corners(resize(base, size_px, size_px)))))
+    # apple-touch-icon は iOS が自前でマスクするため、透明を残さず正方形のまま出力する
     written.append(('apple-touch-icon.png',
                     save_png(str(outdir / 'apple-touch-icon.png'),
                              resize(base, APPLE_TOUCH_SIZE, APPLE_TOUCH_SIZE))))

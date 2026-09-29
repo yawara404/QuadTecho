@@ -1,10 +1,12 @@
 import { createApp } from 'vue';
 
 import './styles/app.css';
-import { appOptions } from './app.js';
+import App from './App.vue';
 import { initAutoMarquee } from './auto-marquee.js';
 
-const app = createApp(appOptions);
+// App.vue がテンプレート（画面の HTML）を持ち、setup 本体（src/app.js）を読み込む。
+// ここで appOptions を直接マウントすると render が無く、画面が空になるので注意。
+const app = createApp(App);
 
 // 予期しない描画エラーで画面全体が真っ白にならないようにする。
 // （古い JS がキャッシュから読み込まれた場合などの保険）
